@@ -1,0 +1,57 @@
+# macOS
+.DS_Store
+
+# phpize / autoconf generated files
+/autom4te.cache/
+/build/
+/configure
+/configure.ac
+/config.h
+/config.h.in
+/config.log
+/config.nice
+/config.status
+/libtool
+/Makefile
+/Makefile.fragments
+/Makefile.objects
+/run-tests.php
+/tmp-php.ini
+
+# PHP extension build output
+/modules/
+/.libs/
+/*.la
+/*.lo
+/*.o
+/*.dep
+/src/*.lo
+/src/*.o
+/src/*.dep
+/src/.libs/
+
+# PHP test runner output
+/tests/*.diff
+/tests/*.out
+/tests/*.exp
+/tests/*.log
+/tests/*.sh.log
+
+# Packaged release artifact
+/onnxruntime-*.tgz
+
+# Local tooling and coverage
+.idea/
+.vscode/
+*.dSYM/
+*.gcda
+*.gcno
+*.gcov
+
+# Office lock/temp files
+~$*.docx
+
+/php-8.5.12/
+/logs/
+/third_party/onnxruntime/
+/docs

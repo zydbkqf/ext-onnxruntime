@@ -1,0 +1,48 @@
+name: build
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  smoke:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            ort_archive: onnxruntime-linux-x64-1.28.2.tgz
+          - os: macos-14
+            ort_archive: onnxruntime-osx-arm64-1.28.2.tgz
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.5"
+          coverage: none
+
+      - name: Install Linux sanitizer toolchain
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y clang
+
+      - name: Download ONNX Runtime SDK
+        env:
+          ORT_ARCHIVE: ${{ matrix.ort_archive }}
+        run: |
+          curl -fsSL \
+            "https://github.com/microsoft/onnxruntime/releases/download/v1.28.2/${ORT_ARCHIVE}" \
+            -o "$RUNNER_TEMP/ort.tgz"
+          mkdir -p "$RUNNER_TEMP/ort"
+          tar -xzf "$RUNNER_TEMP/ort.tgz" -C "$RUNNER_TEMP/ort" --strip-components=1
+          echo "ONNXRUNTIME_ROOT=$RUNNER_TEMP/ort" >> "$GITHUB_ENV"
+
+      - name: Build and load smoke
+        run: bash tests/build-smoke.sh
+
+      - name: Native sanitizers
+        if: runner.os == 'Linux'
+        run: bash tests/run-sanitizers.sh

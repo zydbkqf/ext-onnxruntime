@@ -1,0 +1,27 @@
+PHP ONNX Runtime Extension
+Copyright (c) 2026 Denis Cheung and contributors
+
+This project is licensed under the MIT License. See LICENSE.
+
+Third-party software
+-------------------
+
+ONNX Runtime
+Copyright (c) Microsoft Corporation.
+
+This project uses and links against ONNX Runtime, which is licensed under the
+MIT License. ONNX Runtime is not bundled with this source repository or the
+PECL source package; users must obtain it separately.
+
+Upstream project:
+https://github.com/microsoft/onnxruntime
+
+Upstream license:
+https://github.com/microsoft/onnxruntime/blob/main/LICENSE
+
+ONNX Runtime's third-party notices:
+https://github.com/microsoft/onnxruntime/blob/main/ThirdPartyNotices.txt
+
+If you redistribute an ONNX Runtime binary together with this extension,
+include the applicable ONNX Runtime LICENSE and ThirdPartyNotices.txt from
+the distribution you obtained, in addition to this LICENSE and NOTICE.

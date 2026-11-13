@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<package packagerversion="1.10.13" version="2.0"
+ xmlns="http://pear.php.net/dtd/package-2.0"
+ xmlns:tasks="http://pear.php.net/dtd/tasks-1.0"
+ xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+ xsi:schemaLocation="http://pear.php.net/dtd/tasks-1.0 http://pear.php.net/dtd/tasks-1.0.xsd http://pear.php.net/dtd/package-2.0 http://pear.php.net/dtd/package-2.0.xsd">
+ <name>onnxruntime</name>
+ <channel>pecl.php.net</channel>
+ <summary>PHP bindings for ONNX Runtime synchronous inference</summary>
+ <description>Zend C++ extension for loading ONNX models and running synchronous inference without FFI or Python.</description>
+ <lead>
+  <name>Denis Cheung</name>
+  <user>denischeung</user>
+  <email>denischeung@users.noreply.github.com</email>
+  <active>yes</active>
+ </lead>
+ <date>2026-11-13</date>
+ <version>
+  <release>0.4.3</release>
+  <api>0.4.0</api>
+ </version>
+ <stability>
+  <release>beta</release>
+  <api>beta</api>
+ </stability>
+ <license uri="https://opensource.org/licenses/MIT">MIT</license>
+ <notes>Phase 7E: Session::runBatch() for explicit lists of independent input groups. Includes Phase 7A CPU I/O Binding and Phase 7B fixed-shape preallocated output.</notes>
+ <contents>
+  <dir name="/">
+   <file name="config.m4" role="src"/>
+   <file name="README.md" role="doc"/>
+   <file name="LICENSE" role="doc"/>
+   <file name="NOTICE" role="doc"/>
+   <file name="docs/PHASE1.md" role="doc"/>
+   <file name="docs/PHASE2.md" role="doc"/>
+   <file name="docs/PHASE3.md" role="doc"/>
+   <file name="docs/PHASE4.md" role="doc"/>
+   <file name="docs/PHASE5.md" role="doc"/>
+   <file name="docs/PHASE6.md" role="doc"/>
+   <file name="docs/PHASE7.md" role="doc"/>
+   <file name="docs/BASELINE.md" role="doc"/>
+   <file name="src/ep_device.cpp" role="src"/>
+   <file name="src/async_engine.h" role="src"/>
+   <file name="src/async_engine.cpp" role="src"/>
+   <file name="src/io_binding.h" role="src"/>
+   <file name="src/io_binding.cpp" role="src"/>
+   <file name="src/ep_device.h" role="src"/>
+   <file name="src/onnx_tensor.cpp" role="src"/>
+   <file name="src/onnx_tensor.h" role="src"/>
+   <file name="src/onnxruntime.cpp" role="src"/>
+   <file name="src/ort_environment.cpp" role="src"/>
+   <file name="src/ort_environment.h" role="src"/>
+   <file name="src/ort_value_converter.cpp" role="src"/>
+   <file name="src/ort_value_converter.h" role="src"/>
+   <file name="src/php_onnxruntime.h" role="src"/>
+   <file name="src/session.cpp" role="src"/>
+   <file name="src/session_options.cpp" role="src"/>
+   <file name="src/session_options.h" role="src"/>
+   <file name="src/runtime.cpp" role="src"/>
+   <file name="src/runtime.h" role="src"/>
+   <file name="src/session.h" role="src"/>
+   <file name="src/zval_converter.cpp" role="src"/>
+   <file name="src/zval_converter.h" role="src"/>
+   <file name="tests/001-basic-conversion.phpt" role="test"/>
+   <file name="tests/002-dtype-inference.phpt" role="test"/>
+   <file name="tests/003-invalid-inputs.phpt" role="test"/>
+   <file name="tests/004-explicit-dtype.phpt" role="test"/>
+   <file name="tests/005-overflow-checks.phpt" role="test"/>
+   <file name="tests/006-object-api.phpt" role="test"/>
+   <file name="tests/007-string-tensor.phpt" role="test"/>
+   <file name="tests/008-large-and-memory.phpt" role="test"/>
+   <file name="tests/009-empty-and-boundaries.phpt" role="test"/>
+   <file name="tests/010-float-precision.phpt" role="test"/>
+   <file name="tests/011-ortvalue-numeric.phpt" role="test"/>
+   <file name="tests/012-ortvalue-string.phpt" role="test"/>
+   <file name="tests/013-ortvalue-lifetime-and-errors.phpt" role="test"/>
+   <file name="tests/014-session-load-and-metadata.phpt" role="test"/>
+   <file name="tests/015-session-single-inference.phpt" role="test"/>
+   <file name="tests/016-session-multi-io.phpt" role="test"/>
+   <file name="tests/017-session-dynamic-and-repeated.phpt" role="test"/>
+   <file name="tests/018-session-errors.phpt" role="test"/>
+   <file name="tests/019-session-lifetime.phpt" role="test"/>
+   <file name="tests/020-session-zero-elements.phpt" role="test"/>
+   <file name="tests/021-session-unsupported-io.phpt" role="test"/>
+   <file name="tests/022-session-input-contract.phpt" role="test"/>
+   <file name="tests/023-session-options.phpt" role="test"/>
+   <file name="tests/024-runtime.phpt" role="test"/>
+   <file name="tests/025-coreml.phpt" role="test"/>
+   <file name="tests/026-ep-device.phpt" role="test"/>
+   <file name="tests/027-async.phpt" role="test"/>
+   <file name="tests/028-iobinding-basic.phpt" role="test"/>
+   <file name="tests/029-iobinding-dynamic-lifetime.phpt" role="test"/>
+   <file name="tests/030-iobinding-preallocated-output.phpt" role="test"/>
+   <file name="tests/031-batch.phpt" role="test"/>
+   <file name="tests/build-smoke.sh" role="test"/>
+   <file name="tests/native_stress.cpp" role="test"/>
+   <file name="tests/native_async_stress.cpp" role="test"/>
+   <file name="tests/native_io_binding_stress.cpp" role="test"/>
+   <file name="tests/run-io-binding-sanitizers.sh" role="test"/>
+   <file name="tests/run-async-sanitizers.sh" role="test"/>
+   <file name="tests/run-sanitizers.sh" role="test"/>
+   <file name="tests/validator_probe.cpp" role="test"/>
+   <file name="tests/fixtures/README.md" role="test"/>
+   <file name="tests/fixtures/corrupt.onnx" role="test"/>
+   <file name="tests/fixtures/dynamic.onnx" role="test"/>
+   <file name="tests/fixtures/float16_io.onnx" role="test"/>
+   <file name="tests/fixtures/generate.py" role="test"/>
+   <file name="tests/fixtures/identity.onnx" role="test"/>
+   <file name="tests/fixtures/multi_io.onnx" role="test"/>
+   <file name="tests/fixtures/sequence_io.onnx" role="test"/>
+   <file name="tests/fixtures/zero_1d.onnx" role="test"/>
+   <file name="tests/fixtures/zero_2d.onnx" role="test"/>
+  </dir>
+ </contents>
+ <dependencies>
+  <required>
+   <php>
+    <min>8.0.0</min>
+    <max>8.99.99</max>
+   </php>
+   <pearinstaller>
+    <min>1.10.0</min>
+   </pearinstaller>
+  </required>
+ </dependencies>
+ <providesextension>onnxruntime</providesextension>
+ <extsrcrelease/>
+</package>
