@@ -44,7 +44,7 @@ if (PHP_ONNXRUNTIME != "no") {
 		"src/onnxruntime.cpp src/onnx_tensor.cpp src/zval_converter.cpp " +
 		"src/ort_value_converter.cpp src/ort_environment.cpp src/session.cpp " +
 		"src/session_options.cpp src/runtime.cpp src/ep_device.cpp " +
-		"src/async_engine.cpp src/io_binding.cpp",
+		"src/async_engine.cpp src/device_tensor.cpp src/io_binding.cpp",
 		PHP_ONNXRUNTIME_SHARED,
 		"/std:c++17 /EHsc /I \"" + ort_include + "\" " +
 		"/DNOMINMAX /DZEND_ENABLE_STATIC_TSRMLS_CACHE=1");
