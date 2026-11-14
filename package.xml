@@ -59,6 +59,7 @@
    <file name="src/runtime.cpp" role="src"/>
    <file name="src/runtime.h" role="src"/>
    <file name="src/session.h" role="src"/>
+   <file name="src/win_utils.h" role="src"/>
    <file name="src/zval_converter.cpp" role="src"/>
    <file name="src/zval_converter.h" role="src"/>
    <file name="tests/001-basic-conversion.phpt" role="test"/>
