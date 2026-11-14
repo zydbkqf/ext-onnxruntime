@@ -102,7 +102,7 @@ For the repository's development-only macOS arm64 SDK:
   PHP_SUBST([ONNXRUNTIME_SHARED_LIBADD])
 
   PHP_NEW_EXTENSION([onnxruntime],
-    [src/onnxruntime.cpp src/onnx_tensor.cpp src/zval_converter.cpp src/ort_value_converter.cpp src/ort_environment.cpp src/session.cpp src/session_options.cpp src/runtime.cpp src/ep_device.cpp src/async_engine.cpp src/io_binding.cpp],
+    [src/onnxruntime.cpp src/onnx_tensor.cpp src/zval_converter.cpp src/ort_value_converter.cpp src/ort_environment.cpp src/session.cpp src/session_options.cpp src/runtime.cpp src/ep_device.cpp src/async_engine.cpp src/device_tensor.cpp src/io_binding.cpp],
     [$ext_shared],,
     [-std=c++17 -DZEND_ENABLE_STATIC_TSRMLS_CACHE=1])
 fi

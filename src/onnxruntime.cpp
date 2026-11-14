@@ -27,6 +27,7 @@ extern "C" {
 #pragma push_macro("snprintf")
 #undef snprintf
 #include "async_engine.h"
+#include "device_tensor.h"
 #include "ep_device.h"
 #include "io_binding.h"
 #include "runtime.h"
@@ -113,6 +114,11 @@ typedef struct {
 } php_ort_epdevice_object;
 
 typedef struct {
+    php_ort::DeviceTensor *tensor;
+    zend_object std;
+} php_ort_devicetensor_object;
+
+typedef struct {
     std::shared_ptr<php_ort::AsyncTaskState> *task;
     zend_object std;
 } php_ort_task_object;
@@ -136,6 +142,13 @@ static inline php_ort_epdevice_object *php_ort_epdevice_from_obj(
         XtOffsetOf(php_ort_epdevice_object, std));
 }
 
+static inline php_ort_devicetensor_object *php_ort_devicetensor_from_obj(
+    zend_object *object) {
+    return reinterpret_cast<php_ort_devicetensor_object *>(
+        reinterpret_cast<char *>(object) -
+        XtOffsetOf(php_ort_devicetensor_object, std));
+}
+
 static inline php_ort_task_object *php_ort_task_from_obj(
     zend_object *object) {
     return reinterpret_cast<php_ort_task_object *>(
@@ -152,6 +165,7 @@ static zend_class_entry *onnx_ortvalue_ce = nullptr;
 static zend_class_entry *onnx_session_ce = nullptr;
 static zend_class_entry *onnx_session_options_ce = nullptr;
 static zend_class_entry *onnx_epdevice_ce = nullptr;
+static zend_class_entry *onnx_devicetensor_ce = nullptr;
 static zend_class_entry *onnx_task_ce = nullptr;
 static zend_class_entry *onnx_iobinding_ce = nullptr;
 static zend_class_entry *onnx_runtime_ce = nullptr;
@@ -162,6 +176,7 @@ static zend_object_handlers onnx_ortvalue_handlers;
 static zend_object_handlers onnx_session_handlers;
 static zend_object_handlers onnx_session_options_handlers;
 static zend_object_handlers onnx_epdevice_handlers;
+static zend_object_handlers onnx_devicetensor_handlers;
 static zend_object_handlers onnx_task_handlers;
 static zend_object_handlers onnx_iobinding_handlers;
 static zend_object_handlers onnx_runtime_handlers;
@@ -430,6 +445,34 @@ static zend_object *onnx_epdevice_clone_object(zend_object *object) {
     zend_throw_exception(
         zend_ce_error,
         "OnnxRuntime\\EpDevice is immutable and cannot be cloned",
+        0);
+    return clone;
+}
+
+static zend_object *onnx_devicetensor_create_object(zend_class_entry *ce) {
+    php_ort_devicetensor_object *object =
+        reinterpret_cast<php_ort_devicetensor_object *>(
+            zend_object_alloc(sizeof(php_ort_devicetensor_object), ce));
+    object->tensor = nullptr;
+    zend_object_std_init(&object->std, ce);
+    object->std.handlers = &onnx_devicetensor_handlers;
+    object_properties_init(&object->std, ce);
+    return &object->std;
+}
+
+static void onnx_devicetensor_free_object(zend_object *object) {
+    php_ort_devicetensor_object *self =
+        php_ort_devicetensor_from_obj(object);
+    delete self->tensor;
+    self->tensor = nullptr;
+    zend_object_std_dtor(&self->std);
+}
+
+static zend_object *onnx_devicetensor_clone_object(zend_object *object) {
+    zend_object *clone = onnx_devicetensor_create_object(object->ce);
+    zend_throw_exception(
+        zend_ce_error,
+        "OnnxRuntime\\DeviceTensor is immutable and cannot be cloned",
         0);
     return clone;
 }
@@ -843,6 +886,33 @@ static zend_object *php_ort_return_tensor(php_ort::Tensor &&tensor) {
     return Z_OBJ(holder);
 }
 
+static zend_object *php_ort_return_devicetensor(
+    std::unique_ptr<php_ort::DeviceTensor> tensor) {
+    zval holder;
+    ZVAL_UNDEF(&holder);
+    if (object_init_ex(&holder, onnx_devicetensor_ce) != SUCCESS) {
+        if (Z_TYPE(holder) != IS_UNDEF) {
+            zval_ptr_dtor(&holder);
+        }
+        return nullptr;
+    }
+    if (EG(exception) != nullptr) {
+        zval_ptr_dtor(&holder);
+        return nullptr;
+    }
+
+    php_ort_devicetensor_object *self =
+        php_ort_devicetensor_from_obj(Z_OBJ(holder));
+    self->tensor = tensor.release();
+    if (self->tensor == nullptr) {
+        zval_ptr_dtor(&holder);
+        zend_throw_exception(onnx_conversion_exception_ce,
+                             "failed to allocate device tensor", 0);
+        return nullptr;
+    }
+    return Z_OBJ(holder);
+}
+
 static void php_ort_results_to_array(
     zval *out, const std::vector<php_ort::Tensor> &results,
     const std::vector<php_ort::TensorInfo> &infos) {
@@ -994,6 +1064,54 @@ ZEND_END_ARG_INFO()
 
 ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_onnx_tensor_rank, 0, 0,
                                         IS_LONG, 0)
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_WITH_RETURN_OBJ_INFO_EX(
+    arginfo_onnx_tensor_allocate_on_device, 0, 3,
+    OnnxRuntime\\DeviceTensor, 0)
+    ZEND_ARG_ARRAY_INFO(0, shape, 0)
+    ZEND_ARG_TYPE_INFO(0, dtype, IS_STRING, 0)
+    ZEND_ARG_OBJ_INFO(0, device, OnnxRuntime\\EpDevice, 0)
+    ZEND_ARG_TYPE_INFO_WITH_DEFAULT_VALUE(0, memoryType, IS_STRING, 0,
+                                          "\"device\"")
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(
+    arginfo_onnx_devicetensor_dtype, 0, 0, IS_STRING, 0)
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(
+    arginfo_onnx_devicetensor_shape, 0, 0, IS_ARRAY, 0)
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(
+    arginfo_onnx_devicetensor_rank, 0, 0, IS_LONG, 0)
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(
+    arginfo_onnx_devicetensor_memory_type, 0, 0, IS_STRING, 0)
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_WITH_RETURN_OBJ_INFO_EX(
+    arginfo_onnx_devicetensor_device, 0, 0, OnnxRuntime\\EpDevice, 0)
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(
+    arginfo_onnx_devicetensor_copy_from, 0, 1, IS_VOID, 0)
+    ZEND_ARG_OBJ_INFO(0, tensor, OnnxRuntime\\Tensor, 0)
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(
+    arginfo_onnx_devicetensor_copy_from_device, 0, 1, IS_VOID, 0)
+    ZEND_ARG_OBJ_INFO(0, tensor, OnnxRuntime\\DeviceTensor, 0)
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_WITH_RETURN_OBJ_INFO_EX(
+    arginfo_onnx_devicetensor_copy_to, 0, 0, OnnxRuntime\\Tensor, 0)
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(
+    arginfo_onnx_devicetensor_to_array, 0, 0, IS_MIXED, 0)
 ZEND_END_ARG_INFO()
 
 
@@ -1410,9 +1528,91 @@ PHP_METHOD(OnnxRuntime_Tensor, toOrtValue) {
     }
 }
 
+static void php_ort_parse_device_shape(zval *shape_zval,
+                                      std::vector<int64_t> &shape) {
+    if (Z_TYPE_P(shape_zval) != IS_ARRAY) {
+        throw php_ort::ConversionError("shape must be an array");
+    }
+    size_t expected = 0;
+    zend_ulong index = 0;
+    zend_string *key = nullptr;
+    zval *value = nullptr;
+    ZEND_HASH_FOREACH_KEY_VAL(Z_ARRVAL_P(shape_zval), index, key, value) {
+        if (key != nullptr || index != expected) {
+            throw php_ort::ConversionError(
+                "shape must be a zero-based list of integers");
+        }
+        if (Z_TYPE_P(value) != IS_LONG) {
+            throw php_ort::ConversionError(
+                "shape dimensions must be integers");
+        }
+        if (Z_LVAL_P(value) < 0) {
+            throw php_ort::ConversionError(
+                "device tensor dimensions must be non-negative");
+        }
+        shape.push_back(static_cast<int64_t>(Z_LVAL_P(value)));
+        ++expected;
+    } ZEND_HASH_FOREACH_END();
+}
+
+PHP_METHOD(OnnxRuntime_Tensor, allocateOnDevice) {
+    zval *shape_arg = nullptr;
+    zend_string *dtype_arg = nullptr;
+    zval *device_arg = nullptr;
+    zend_string *memory_type_arg = nullptr;
+
+    ZEND_PARSE_PARAMETERS_START(3, 4)
+        Z_PARAM_ARRAY(shape_arg)
+        Z_PARAM_STR(dtype_arg)
+        Z_PARAM_OBJECT_OF_CLASS(device_arg, onnx_epdevice_ce)
+        Z_PARAM_OPTIONAL
+        Z_PARAM_STR_OR_NULL(memory_type_arg)
+    ZEND_PARSE_PARAMETERS_END();
+
+    try {
+        php_ort_epdevice_object *device_object =
+            php_ort_epdevice_from_obj(Z_OBJ_P(device_arg));
+        if (device_object->info == nullptr) {
+            throw php_ort::ConversionError("EpDevice is uninitialized");
+        }
+
+        ONNXTensorElementDataType type;
+        if (!php_ort::elementTypeFromName(
+                std::string(ZSTR_VAL(dtype_arg), ZSTR_LEN(dtype_arg)),
+                &type)) {
+            throw php_ort::ConversionError(
+                "unsupported device tensor dtype: " +
+                std::string(ZSTR_VAL(dtype_arg), ZSTR_LEN(dtype_arg)));
+        }
+
+        std::vector<int64_t> shape;
+        php_ort_parse_device_shape(shape_arg, shape);
+
+        std::string memory_type = memory_type_arg != nullptr
+                                      ? std::string(ZSTR_VAL(memory_type_arg),
+                                                    ZSTR_LEN(memory_type_arg))
+                                      : std::string("device");
+        auto tensor = php_ort::DeviceTensor::allocate(
+            *device_object->info, shape, type, memory_type);
+        zend_object *object =
+            php_ort_return_devicetensor(std::move(tensor));
+        if (object == nullptr) {
+            RETURN_THROWS();
+        }
+        RETURN_OBJ(object);
+    } catch (...) {
+        php_ort_throw_native(std::current_exception(),
+                             "failed to allocate device tensor");
+        RETURN_THROWS();
+    }
+}
+
 static const zend_function_entry onnx_tensor_methods[] = {
     PHP_ME(OnnxRuntime_Tensor, __construct, arginfo_onnx_tensor_construct,
            ZEND_ACC_PUBLIC)
+    PHP_ME(OnnxRuntime_Tensor, allocateOnDevice,
+           arginfo_onnx_tensor_allocate_on_device,
+           ZEND_ACC_PUBLIC | ZEND_ACC_STATIC)
     PHP_ME(OnnxRuntime_Tensor, fromArray, arginfo_onnx_tensor_from_array,
            ZEND_ACC_PUBLIC | ZEND_ACC_STATIC)
     PHP_ME(OnnxRuntime_Tensor, dtype, arginfo_onnx_tensor_dtype,
@@ -1426,6 +1626,209 @@ static const zend_function_entry onnx_tensor_methods[] = {
            ZEND_ACC_PUBLIC)
     PHP_ME(OnnxRuntime_Tensor, __debugInfo, arginfo_onnx_tensor_debug_info,
            ZEND_ACC_PUBLIC)
+    PHP_FE_END
+};
+
+PHP_METHOD(OnnxRuntime_DeviceTensor, __construct) {
+    ZEND_PARSE_PARAMETERS_NONE();
+    zend_throw_exception(
+        zend_ce_error,
+        "OnnxRuntime\\DeviceTensor cannot be constructed directly; use "
+        "OnnxRuntime\\Tensor::allocateOnDevice()",
+        0);
+    RETURN_THROWS();
+}
+
+static php_ort::DeviceTensor *php_ort_require_devicetensor(
+    zend_object *object, const char *context) {
+    php_ort_devicetensor_object *self = php_ort_devicetensor_from_obj(object);
+    if (self->tensor == nullptr) {
+        throw php_ort::ConversionError(
+            std::string(context) + ": device tensor is uninitialized");
+    }
+    return self->tensor;
+}
+
+PHP_METHOD(OnnxRuntime_DeviceTensor, dtype) {
+    ZEND_PARSE_PARAMETERS_NONE();
+    try {
+        php_ort::DeviceTensor *tensor =
+            php_ort_require_devicetensor(Z_OBJ_P(ZEND_THIS), "dtype");
+        RETURN_STRING(php_ort::elementTypeName(tensor->type()));
+    } catch (...) {
+        php_ort_throw_native(std::current_exception(),
+                             "failed to read device tensor dtype");
+        RETURN_THROWS();
+    }
+}
+
+PHP_METHOD(OnnxRuntime_DeviceTensor, shape) {
+    ZEND_PARSE_PARAMETERS_NONE();
+    try {
+        php_ort::DeviceTensor *tensor =
+            php_ort_require_devicetensor(Z_OBJ_P(ZEND_THIS), "shape");
+        array_init_size(return_value,
+                        php_ort_checked_count(tensor->shape().size(),
+                                              "device tensor rank"));
+        for (int64_t dim : tensor->shape()) {
+            add_next_index_long(return_value,
+                                php_ort_to_long(dim, "shape dimension"));
+        }
+    } catch (...) {
+        php_ort_throw_native(std::current_exception(),
+                             "failed to read device tensor shape");
+        RETURN_THROWS();
+    }
+}
+
+PHP_METHOD(OnnxRuntime_DeviceTensor, rank) {
+    ZEND_PARSE_PARAMETERS_NONE();
+    try {
+        php_ort::DeviceTensor *tensor =
+            php_ort_require_devicetensor(Z_OBJ_P(ZEND_THIS), "rank");
+        RETURN_LONG(php_ort_size_to_long(tensor->shape().size(),
+                                         "device tensor rank"));
+    } catch (...) {
+        php_ort_throw_native(std::current_exception(),
+                             "failed to read device tensor rank");
+        RETURN_THROWS();
+    }
+}
+
+PHP_METHOD(OnnxRuntime_DeviceTensor, memoryType) {
+    ZEND_PARSE_PARAMETERS_NONE();
+    try {
+        php_ort::DeviceTensor *tensor =
+            php_ort_require_devicetensor(Z_OBJ_P(ZEND_THIS), "memoryType");
+        RETURN_STRING(tensor->memoryType().c_str());
+    } catch (...) {
+        php_ort_throw_native(std::current_exception(),
+                             "failed to read device tensor memory type");
+        RETURN_THROWS();
+    }
+}
+
+PHP_METHOD(OnnxRuntime_DeviceTensor, device) {
+    ZEND_PARSE_PARAMETERS_NONE();
+    try {
+        php_ort::DeviceTensor *tensor =
+            php_ort_require_devicetensor(Z_OBJ_P(ZEND_THIS), "device");
+        zend_object *object = php_ort_return_epdevice(tensor->device());
+        if (object == nullptr) {
+            RETURN_THROWS();
+        }
+        RETURN_OBJ(object);
+    } catch (...) {
+        php_ort_throw_native(std::current_exception(),
+                             "failed to read device tensor device");
+        RETURN_THROWS();
+    }
+}
+
+PHP_METHOD(OnnxRuntime_DeviceTensor, copyFrom) {
+    zval *source_arg = nullptr;
+    ZEND_PARSE_PARAMETERS_START(1, 1)
+        Z_PARAM_OBJECT_OF_CLASS(source_arg, onnx_tensor_ce)
+    ZEND_PARSE_PARAMETERS_END();
+
+    try {
+        php_ort::DeviceTensor *tensor =
+            php_ort_require_devicetensor(Z_OBJ_P(ZEND_THIS), "copyFrom");
+        php_ort_tensor_object *source =
+            php_ort_tensor_from_obj(Z_OBJ_P(source_arg));
+        if (source->tensor == nullptr) {
+            throw php_ort::ConversionError("source Tensor is uninitialized");
+        }
+        tensor->copyFrom(*source->tensor);
+    } catch (...) {
+        php_ort_throw_native(std::current_exception(),
+                             "CPU to device tensor copy failed");
+        RETURN_THROWS();
+    }
+}
+
+PHP_METHOD(OnnxRuntime_DeviceTensor, copyTo) {
+    ZEND_PARSE_PARAMETERS_NONE();
+    try {
+        php_ort::DeviceTensor *tensor =
+            php_ort_require_devicetensor(Z_OBJ_P(ZEND_THIS), "copyTo");
+        php_ort::Tensor result = tensor->copyTo();
+        zend_object *object = php_ort_return_tensor(std::move(result));
+        if (object == nullptr) {
+            RETURN_THROWS();
+        }
+        RETURN_OBJ(object);
+    } catch (...) {
+        php_ort_throw_native(std::current_exception(),
+                             "device to CPU tensor copy failed");
+        RETURN_THROWS();
+    }
+}
+
+PHP_METHOD(OnnxRuntime_DeviceTensor, copyFromDevice) {
+    zval *source_arg = nullptr;
+    ZEND_PARSE_PARAMETERS_START(1, 1)
+        Z_PARAM_OBJECT_OF_CLASS(source_arg, onnx_devicetensor_ce)
+    ZEND_PARSE_PARAMETERS_END();
+
+    try {
+        php_ort::DeviceTensor *tensor =
+            php_ort_require_devicetensor(Z_OBJ_P(ZEND_THIS), "copyFromDevice");
+        php_ort_devicetensor_object *source =
+            php_ort_devicetensor_from_obj(Z_OBJ_P(source_arg));
+        if (source->tensor == nullptr) {
+            throw php_ort::ConversionError(
+                "source DeviceTensor is uninitialized");
+        }
+        tensor->copyFromDevice(*source->tensor);
+    } catch (...) {
+        php_ort_throw_native(std::current_exception(),
+                             "device to device tensor copy failed");
+        RETURN_THROWS();
+    }
+}
+
+PHP_METHOD(OnnxRuntime_DeviceTensor, toArray) {
+    ZEND_PARSE_PARAMETERS_NONE();
+    try {
+        php_ort::DeviceTensor *tensor =
+            php_ort_require_devicetensor(Z_OBJ_P(ZEND_THIS), "toArray");
+        php_ort::Tensor cpu = tensor->copyTo();
+        cpu.validate();
+        size_t index = 0;
+        php_ort_tensor_to_zval(cpu, 0, index, return_value);
+        if (index != cpu.elementCount()) {
+            throw php_ort::ConversionError(
+                "device tensor traversal stopped before all elements were read");
+        }
+    } catch (...) {
+        php_ort_throw_native(std::current_exception(),
+                             "failed to read device tensor data");
+        RETURN_THROWS();
+    }
+}
+
+static const zend_function_entry onnx_devicetensor_methods[] = {
+    PHP_ME(OnnxRuntime_DeviceTensor, __construct,
+           arginfo_onnx_tensor_construct, ZEND_ACC_PUBLIC)
+    PHP_ME(OnnxRuntime_DeviceTensor, dtype,
+           arginfo_onnx_devicetensor_dtype, ZEND_ACC_PUBLIC)
+    PHP_ME(OnnxRuntime_DeviceTensor, shape,
+           arginfo_onnx_devicetensor_shape, ZEND_ACC_PUBLIC)
+    PHP_ME(OnnxRuntime_DeviceTensor, rank,
+           arginfo_onnx_devicetensor_rank, ZEND_ACC_PUBLIC)
+    PHP_ME(OnnxRuntime_DeviceTensor, memoryType,
+           arginfo_onnx_devicetensor_memory_type, ZEND_ACC_PUBLIC)
+    PHP_ME(OnnxRuntime_DeviceTensor, device,
+           arginfo_onnx_devicetensor_device, ZEND_ACC_PUBLIC)
+    PHP_ME(OnnxRuntime_DeviceTensor, copyFrom,
+           arginfo_onnx_devicetensor_copy_from, ZEND_ACC_PUBLIC)
+    PHP_ME(OnnxRuntime_DeviceTensor, copyTo,
+           arginfo_onnx_devicetensor_copy_to, ZEND_ACC_PUBLIC)
+    PHP_ME(OnnxRuntime_DeviceTensor, copyFromDevice,
+           arginfo_onnx_devicetensor_copy_from_device, ZEND_ACC_PUBLIC)
+    PHP_ME(OnnxRuntime_DeviceTensor, toArray,
+           arginfo_onnx_devicetensor_to_array, ZEND_ACC_PUBLIC)
     PHP_FE_END
 };
 
@@ -3198,6 +3601,19 @@ PHP_MINIT_FUNCTION(onnxruntime) {
     onnx_ortvalue_handlers.clone_obj = onnx_ortvalue_clone_object;
     onnx_ortvalue_handlers.get_gc = onnx_ortvalue_get_gc;
     onnx_ortvalue_ce->create_object = onnx_ortvalue_create_object;
+
+    INIT_NS_CLASS_ENTRY(ce, "OnnxRuntime", "DeviceTensor",
+                        onnx_devicetensor_methods);
+    onnx_devicetensor_ce = php_ort_register_class_with_flags(
+        &ce, nullptr, ZEND_ACC_FINAL | ZEND_ACC_NO_DYNAMIC_PROPERTIES);
+
+    std::memcpy(&onnx_devicetensor_handlers, zend_get_std_object_handlers(),
+                sizeof(zend_object_handlers));
+    onnx_devicetensor_handlers.offset =
+        XtOffsetOf(php_ort_devicetensor_object, std);
+    onnx_devicetensor_handlers.free_obj = onnx_devicetensor_free_object;
+    onnx_devicetensor_handlers.clone_obj = onnx_devicetensor_clone_object;
+    onnx_devicetensor_ce->create_object = onnx_devicetensor_create_object;
 
     INIT_NS_CLASS_ENTRY(ce, "OnnxRuntime", "Tensor", onnx_tensor_methods);
     onnx_tensor_ce = php_ort_register_class_with_flags(

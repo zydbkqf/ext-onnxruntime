@@ -40,11 +40,13 @@
    <file name="docs/PHASE6.md" role="doc"/>
    <file name="docs/PHASE7.md" role="doc"/>
    <file name="docs/BASELINE.md" role="doc"/>
+   <file name="src/device_tensor.cpp" role="src"/>
    <file name="src/ep_device.cpp" role="src"/>
    <file name="src/async_engine.h" role="src"/>
    <file name="src/async_engine.cpp" role="src"/>
    <file name="src/io_binding.h" role="src"/>
    <file name="src/io_binding.cpp" role="src"/>
+   <file name="src/device_tensor.h" role="src"/>
    <file name="src/ep_device.h" role="src"/>
    <file name="src/onnx_tensor.cpp" role="src"/>
    <file name="src/onnx_tensor.h" role="src"/>
@@ -93,6 +95,8 @@
    <file name="tests/029-iobinding-dynamic-lifetime.phpt" role="test"/>
    <file name="tests/030-iobinding-preallocated-output.phpt" role="test"/>
    <file name="tests/031-batch.phpt" role="test"/>
+   <file name="tests/032-device-tensor-cpu.phpt" role="test"/>
+   <file name="tests/033-device-tensor-cuda.phpt" role="test"/>
    <file name="tests/build-smoke.sh" role="test"/>
    <file name="tests/native_stress.cpp" role="test"/>
    <file name="tests/native_async_stress.cpp" role="test"/>
