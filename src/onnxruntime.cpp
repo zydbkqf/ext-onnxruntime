@@ -3141,19 +3141,26 @@ PHP_METHOD(OnnxRuntime_Task, wait) {
                     throw php_ort::ConversionError(
                         "wait timeout must not be negative");
                 }
-                timeout_ms = static_cast<int64_t>(value) * 1000;
+                const int64_t max_ms =
+                    std::numeric_limits<int64_t>::max();
+                if (value > max_ms / 1000) {
+                    timeout_ms = max_ms;
+                } else {
+                    timeout_ms = static_cast<int64_t>(value) * 1000;
+                }
             } else if (Z_TYPE_P(timeout) == IS_DOUBLE) {
                 double value = Z_DVAL_P(timeout);
                 if (!std::isfinite(value) || value < 0) {
                     throw php_ort::ConversionError(
                         "wait timeout must be a finite non-negative number");
                 }
-                const double max_ms =
-                    static_cast<double>(std::numeric_limits<int64_t>::max());
-                if (value > max_ms / 1000.0) {
+                long double scaled =
+                    static_cast<long double>(value) * 1000.0L;
+                if (scaled >= static_cast<long double>(
+                                  std::numeric_limits<int64_t>::max())) {
                     timeout_ms = std::numeric_limits<int64_t>::max();
                 } else {
-                    timeout_ms = static_cast<int64_t>(value * 1000.0);
+                    timeout_ms = static_cast<int64_t>(scaled);
                 }
             } else {
                 throw php_ort::ConversionError(
@@ -3263,7 +3270,7 @@ PHP_METHOD(OnnxRuntime_Task, cancel) {
                              "Task is not initialized", 0);
         RETURN_THROWS();
     }
-    RETURN_BOOL((*self->task)->cancelQueued());
+    RETURN_BOOL(php_ort::cancelAsyncTask(*self->task));
 }
 
 PHP_METHOD(OnnxRuntime_EpDevice, __construct) {
@@ -3750,7 +3757,7 @@ PHP_MINFO_FUNCTION(onnxruntime) {
     php_info_print_table_row(2, "ONNX Runtime C API",
                              "v1.28.2 (ORT_API_VERSION 28, linked)");
     php_info_print_table_row(2, "phase",
-                             "6: native async inference");
+                             "7: advanced inference and memory management");
     php_info_print_table_end();
 }
 

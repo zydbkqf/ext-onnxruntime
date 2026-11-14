@@ -83,47 +83,40 @@ std::unique_ptr<DeviceTensor> DeviceTensor::allocate(
     tensor->memory_type_ = normalizeMemoryType(memory_type);
     tensor->env_ = environment();
 
-    // Acquire the Plugin EP lease before asking ORT for an allocator.  If the
-    // allocation fails, the partially constructed object is not destroyed,
-    // so the lease must be released explicitly on this path.
-    tensor->plugin_registrations_ = acquirePluginSessions({device});
-    try {
-        Ort::ConstEpDevice ep_device =
-            resolveEpDevice(*tensor->env_, device);
-        Ort::ConstMemoryInfo memory_info = ep_device.GetMemoryInfo(
-            ortMemoryType(tensor->memory_type_));
+    // Acquire the Plugin EP lease before asking ORT for an allocator.  The
+    // lease is an RAII member declared after env_ and before allocator_/value_,
+    // so an exception below destroys this partially built object in the safe
+    // order: value, allocator, lease, Env.
+    tensor->plugin_lease_.acquire({device});
 
-        // EpDevice_MemoryInfo returns nullptr for DEFAULT on an EP that uses
-        // CPU memory (including the built-in CPU device).  In that case use
-        // the CPU memory info and the Env's matching shared allocator.
-        Ort::MemoryInfo cpu_memory =
-            Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
-        Ort::UnownedAllocator allocator =
-            memory_info == nullptr
-                ? tensor->env_->GetSharedAllocator(cpu_memory)
-                : tensor->env_->GetSharedAllocator(memory_info);
-        if (allocator == nullptr) {
-            throw ConversionError(
-                "no shared allocator for the requested device memory type");
-        }
+    Ort::ConstEpDevice ep_device =
+        resolveEpDevice(*tensor->env_, device);
+    Ort::ConstMemoryInfo memory_info = ep_device.GetMemoryInfo(
+        ortMemoryType(tensor->memory_type_));
 
-        tensor->allocator_ = allocator;
-        tensor->value_ = Ort::Value::CreateTensor(
-            allocator, tensor->shape_.data(), tensor->shape_.size(),
-            tensor->type_);
-    } catch (...) {
-        releasePluginSessions(tensor->plugin_registrations_);
-        tensor->plugin_registrations_.clear();
-        throw;
+    // EpDevice_MemoryInfo returns nullptr for DEFAULT on an EP that uses
+    // CPU memory (including the built-in CPU device).  In that case use
+    // the CPU memory info and the Env's matching shared allocator.
+    Ort::MemoryInfo cpu_memory =
+        Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+    Ort::UnownedAllocator allocator =
+        memory_info == nullptr
+            ? tensor->env_->GetSharedAllocator(cpu_memory)
+            : tensor->env_->GetSharedAllocator(memory_info);
+    if (allocator == nullptr) {
+        throw ConversionError(
+            "no shared allocator for the requested device memory type");
     }
+
+    tensor->allocator_ = allocator;
+    tensor->value_ = Ort::Value::CreateTensor(
+        allocator, tensor->shape_.data(), tensor->shape_.size(),
+        tensor->type_);
 
     return tensor;
 }
 
-DeviceTensor::~DeviceTensor() {
-    // `value_` has already been destroyed by member destruction order.
-    releasePluginSessions(plugin_registrations_);
-}
+DeviceTensor::~DeviceTensor() = default;
 
 void DeviceTensor::assertCompatible(const DeviceTensor &other) const {
     if (type_ != other.type_) {

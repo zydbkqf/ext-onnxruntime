@@ -141,15 +141,6 @@ void validateTensorAgainstInfo(const Tensor &tensor, const TensorInfo &info,
 
 }  // namespace
 
-SessionState::PluginLease::~PluginLease() {
-    releasePluginSessions(registrations);
-}
-
-void SessionState::PluginLease::acquire(
-    const std::vector<EpDeviceInfo> &devices) {
-    registrations = acquirePluginSessions(devices);
-}
-
 SessionState::SessionState(const std::string &model_path,
                            const SessionConfig *config)
     : env(environment()), session(nullptr) {

@@ -16,7 +16,7 @@
  </lead>
  <date>2026-11-14</date>
  <version>
-  <release>0.4.5</release>
+  <release>0.4.6</release>
   <api>0.4.0</api>
  </version>
  <stability>
@@ -24,12 +24,13 @@
   <api>beta</api>
  </stability>
  <license uri="https://opensource.org/licenses/MIT">MIT</license>
- <notes>Phase 7C/7D device tensors and explicit device copies, plus Phase 7F async I/O Binding on the native Task engine. Includes Phase 7A CPU I/O Binding, Phase 7B fixed-shape preallocated output and Phase 7E explicit batch inference.</notes>
+ <notes>Phase 7C/7D device tensors and explicit device copies, plus Phase 7F async I/O Binding on the native Task engine. Includes Phase 7A CPU I/O Binding, Phase 7B fixed-shape preallocated output and Phase 7E explicit batch inference. 0.4.6 hardens DeviceTensor/Plugin EP lifetime ordering, releases queue capacity on cancelled tasks, and makes Task timeout conversion and worker-pool construction overflow/exception safe.</notes>
  <contents>
   <dir name="/">
    <file name="config.m4" role="src"/>
    <file name="config.w32" role="src"/>
    <file name="README.md" role="doc"/>
+   <file name="composer.json" role="doc"/>
    <file name="LICENSE" role="doc"/>
    <file name="NOTICE" role="doc"/>
    <file name="docs/PHASE1.md" role="doc"/>
