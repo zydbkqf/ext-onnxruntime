@@ -124,7 +124,7 @@ typedef struct {
 } php_ort_task_object;
 
 typedef struct {
-    php_ort::IoBindingState *binding;
+    std::shared_ptr<php_ort::IoBindingState> *binding;
     zend_object std;
 } php_ort_iobinding_object;
 
@@ -1301,6 +1301,12 @@ ZEND_END_ARG_INFO()
 
 ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_onnx_session_run_with_binding,
                                         0, 1, IS_ARRAY, 0)
+    ZEND_ARG_OBJ_INFO(0, binding, OnnxRuntime\\IoBinding, 0)
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_WITH_RETURN_OBJ_INFO_EX(
+    arginfo_onnx_session_run_with_binding_async, 0, 1,
+    OnnxRuntime\\Task, 0)
     ZEND_ARG_OBJ_INFO(0, binding, OnnxRuntime\\IoBinding, 0)
 ZEND_END_ARG_INFO()
 
@@ -2836,13 +2842,15 @@ PHP_METHOD(OnnxRuntime_Session, createIoBinding) {
             throw php_ort::ConversionError("session is not initialized");
         }
 
-        std::unique_ptr<php_ort::IoBindingState> binding =
+        std::shared_ptr<php_ort::IoBindingState> binding =
             self->session->createIoBinding();
         object_init_ex(return_value, onnx_iobinding_ce);
         php_ort_iobinding_object *binding_object =
             php_ort_iobinding_from_obj(Z_OBJ_P(return_value));
-        binding_object->binding = binding.release();
-        if (binding_object->binding == nullptr) {
+        binding_object->binding =
+            new std::shared_ptr<php_ort::IoBindingState>(std::move(binding));
+        if (binding_object->binding == nullptr ||
+            *binding_object->binding == nullptr) {
             throw php_ort::ConversionError(
                 "failed to allocate I/O binding object");
         }
@@ -2872,23 +2880,78 @@ PHP_METHOD(OnnxRuntime_Session, runWithBinding) {
         }
         php_ort_iobinding_object *binding_object =
             php_ort_iobinding_from_obj(Z_OBJ_P(binding));
-        if (binding_object->binding == nullptr) {
+        if (binding_object->binding == nullptr ||
+            *binding_object->binding == nullptr) {
             throw php_ort::ConversionError(
                 "I/O binding is not initialized");
         }
-        if (binding_object->binding->session().get() !=
+        std::shared_ptr<php_ort::IoBindingState> binding_state =
+            *binding_object->binding;
+        if (binding_state->session().get() !=
             self->session->state().get()) {
             throw php_ort::ConversionError(
                 "I/O binding belongs to a different Session");
         }
 
-        std::vector<php_ort::Tensor> results =
-            binding_object->binding->run();
+        std::vector<php_ort::Tensor> results = binding_state->run();
         php_ort_results_to_array(return_value, results,
                                  self->session->outputs());
     } catch (...) {
         php_ort_throw_native(std::current_exception(),
                              "failed to run with I/O binding");
+        RETURN_THROWS();
+    }
+}
+
+PHP_METHOD(OnnxRuntime_Session, runWithBindingAsync) {
+    zval *binding = nullptr;
+    ZEND_PARSE_PARAMETERS_START(1, 1)
+        Z_PARAM_OBJECT(binding)
+    ZEND_PARSE_PARAMETERS_END();
+
+    php_ort_session_object *self =
+        php_ort_session_from_obj(Z_OBJ_P(ZEND_THIS));
+    try {
+        if (self->session == nullptr) {
+            throw php_ort::ConversionError("session is not initialized");
+        }
+        if (Z_TYPE_P(binding) != IS_OBJECT ||
+            !instanceof_function(Z_OBJCE_P(binding), onnx_iobinding_ce)) {
+            throw php_ort::ConversionError(
+                "runWithBindingAsync expects an OnnxRuntime\\IoBinding");
+        }
+        php_ort_iobinding_object *binding_object =
+            php_ort_iobinding_from_obj(Z_OBJ_P(binding));
+        if (binding_object->binding == nullptr ||
+            *binding_object->binding == nullptr) {
+            throw php_ort::ConversionError(
+                "I/O binding is not initialized");
+        }
+        std::shared_ptr<php_ort::IoBindingState> binding_state =
+            *binding_object->binding;
+        if (binding_state->session().get() !=
+            self->session->state().get()) {
+            throw php_ort::ConversionError(
+                "I/O binding belongs to a different Session");
+        }
+
+        // The Task takes exclusive ownership of the binding and all of its
+        // input/output buffers.  The worker touches only native state.
+        std::shared_ptr<php_ort::AsyncTaskState> task =
+            php_ort::submitAsyncBindingTask(self->session->state(),
+                                            std::move(binding_state));
+
+        object_init_ex(return_value, onnx_task_ce);
+        php_ort_task_object *task_object =
+            php_ort_task_from_obj(Z_OBJ_P(return_value));
+        if (task_object->task == nullptr) {
+            throw php_ort::ConversionError(
+                "failed to allocate async Task object");
+        }
+        *task_object->task = std::move(task);
+    } catch (...) {
+        php_ort_throw_native(std::current_exception(),
+                             "failed to submit async binding inference");
         RETURN_THROWS();
     }
 }
@@ -2914,7 +2977,7 @@ PHP_METHOD(OnnxRuntime_IoBinding, bindInput) {
     php_ort_iobinding_object *self =
         php_ort_iobinding_from_obj(Z_OBJ_P(ZEND_THIS));
     try {
-        if (self->binding == nullptr) {
+        if (self->binding == nullptr || *self->binding == nullptr) {
             throw php_ort::ConversionError(
                 "I/O binding is not initialized");
         }
@@ -2930,7 +2993,7 @@ PHP_METHOD(OnnxRuntime_IoBinding, bindInput) {
                 "input Tensor is uninitialized");
         }
 
-        self->binding->bindInput(
+        (*self->binding)->bindInput(
             std::string(ZSTR_VAL(name), ZSTR_LEN(name)),
             *tensor_object->tensor);
     } catch (...) {
@@ -2949,11 +3012,11 @@ PHP_METHOD(OnnxRuntime_IoBinding, bindOutput) {
     php_ort_iobinding_object *self =
         php_ort_iobinding_from_obj(Z_OBJ_P(ZEND_THIS));
     try {
-        if (self->binding == nullptr) {
+        if (self->binding == nullptr || *self->binding == nullptr) {
             throw php_ort::ConversionError(
                 "I/O binding is not initialized");
         }
-        self->binding->bindOutput(
+        (*self->binding)->bindOutput(
             std::string(ZSTR_VAL(name), ZSTR_LEN(name)));
     } catch (...) {
         php_ort_throw_native(std::current_exception(),
@@ -2973,7 +3036,7 @@ PHP_METHOD(OnnxRuntime_IoBinding, bindOutputBuffer) {
     php_ort_iobinding_object *self =
         php_ort_iobinding_from_obj(Z_OBJ_P(ZEND_THIS));
     try {
-        if (self->binding == nullptr) {
+        if (self->binding == nullptr || *self->binding == nullptr) {
             throw php_ort::ConversionError(
                 "I/O binding is not initialized");
         }
@@ -2989,7 +3052,7 @@ PHP_METHOD(OnnxRuntime_IoBinding, bindOutputBuffer) {
                 "output buffer Tensor is uninitialized");
         }
 
-        self->binding->bindOutputBuffer(
+        (*self->binding)->bindOutputBuffer(
             std::string(ZSTR_VAL(name), ZSTR_LEN(name)),
             *buffer_object->tensor);
     } catch (...) {
@@ -3004,13 +3067,13 @@ PHP_METHOD(OnnxRuntime_IoBinding, getOutputs) {
     php_ort_iobinding_object *self =
         php_ort_iobinding_from_obj(Z_OBJ_P(ZEND_THIS));
     try {
-        if (self->binding == nullptr) {
+        if (self->binding == nullptr || *self->binding == nullptr) {
             throw php_ort::ConversionError(
                 "I/O binding is not initialized");
         }
+        std::vector<php_ort::Tensor> outputs = (*self->binding)->outputs();
         php_ort_results_to_array(
-            return_value, self->binding->outputs(),
-            self->binding->session()->outputs());
+            return_value, outputs, (*self->binding)->session()->outputs());
     } catch (...) {
         php_ort_throw_native(std::current_exception(),
                              "failed to read I/O binding outputs");
@@ -3490,6 +3553,8 @@ static const zend_function_entry onnx_session_methods[] = {
            arginfo_onnx_session_create_io_binding, ZEND_ACC_PUBLIC)
     PHP_ME(OnnxRuntime_Session, runWithBinding,
            arginfo_onnx_session_run_with_binding, ZEND_ACC_PUBLIC)
+    PHP_ME(OnnxRuntime_Session, runWithBindingAsync,
+           arginfo_onnx_session_run_with_binding_async, ZEND_ACC_PUBLIC)
     PHP_FE_END
 };
 

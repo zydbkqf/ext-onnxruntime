@@ -9,6 +9,7 @@
 #include <utility>
 
 #include "onnx_tensor.h"
+#include "io_binding.h"
 #include "runtime.h"
 
 namespace php_ort {
@@ -56,6 +57,17 @@ AsyncTaskState::AsyncTaskState(std::shared_ptr<SessionState> session,
       session_(std::move(session)),
       inputs_(std::move(inputs)),
       output_names_(std::move(output_names)) {}
+
+AsyncTaskState::AsyncTaskState(std::shared_ptr<SessionState> session,
+                               std::shared_ptr<IoBindingState> binding)
+    : id_(g_next_task_id.fetch_add(1, std::memory_order_relaxed)),
+      session_(std::move(session)),
+      binding_(std::move(binding)) {
+    output_names_.reserve(session_->outputs().size());
+    for (const TensorInfo &info : session_->outputs()) {
+        output_names_.push_back(info.name);
+    }
+}
 
 AsyncTaskStatus AsyncTaskState::status() const {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -173,6 +185,24 @@ std::shared_ptr<AsyncTaskState> AsyncEngine::submit(
     return task;
 }
 
+std::shared_ptr<AsyncTaskState> AsyncEngine::submitBinding(
+    std::shared_ptr<SessionState> session,
+    std::shared_ptr<IoBindingState> binding) {
+    auto task = std::make_shared<AsyncTaskState>(
+        std::move(session), std::move(binding));
+
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (stopping_) {
+        throw ConversionError("async engine is shutting down");
+    }
+    if (queue_.size() >= queue_capacity_) {
+        throw ConversionError("async task queue is full");
+    }
+    queue_.push_back(task);
+    cv_.notify_one();
+    return task;
+}
+
 void AsyncEngine::shutdown() {
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -234,13 +264,19 @@ void AsyncEngine::workerLoop() {
         }
 
         try {
-            const std::vector<Tensor> &inputs = task->inputs();
-            std::vector<const Tensor *> pointers;
-            pointers.reserve(inputs.size());
-            for (const Tensor &input : inputs) {
-                pointers.push_back(&input);
+            std::vector<Tensor> outputs;
+            if (task->binding() != nullptr) {
+                // Worker touches only native buffers owned by the binding.
+                outputs = task->binding()->runForAsync();
+            } else {
+                const std::vector<Tensor> &inputs = task->inputs();
+                std::vector<const Tensor *> pointers;
+                pointers.reserve(inputs.size());
+                for (const Tensor &input : inputs) {
+                    pointers.push_back(&input);
+                }
+                outputs = task->session()->run(pointers);
             }
-            std::vector<Tensor> outputs = task->session()->run(pointers);
             task->complete(std::move(outputs));
         } catch (...) {
             task->fail(std::current_exception());
@@ -314,6 +350,32 @@ std::shared_ptr<AsyncTaskState> submitAsyncTask(
         engine = g_engine;
     }
     return engine->submit(std::move(session), std::move(inputs));
+}
+
+std::shared_ptr<AsyncTaskState> submitAsyncBindingTask(
+    std::shared_ptr<SessionState> session,
+    std::shared_ptr<IoBindingState> binding) {
+    ensureRuntimeAcceptingWork();
+
+    binding->markAsyncSubmitted();
+    try {
+        std::shared_ptr<AsyncEngine> engine;
+        {
+            std::lock_guard<std::mutex> lock(g_engine_mutex);
+            if (g_engine == nullptr) {
+                g_engine = std::make_shared<AsyncEngine>(g_worker_count,
+                                                         g_queue_capacity);
+            }
+            engine = g_engine;
+        }
+        std::shared_ptr<AsyncTaskState> task =
+            engine->submitBinding(std::move(session), binding);
+        binding.reset();
+        return task;
+    } catch (...) {
+        binding->clearAsyncSubmitted();
+        throw;
+    }
 }
 
 void shutdownAsyncEngine() {

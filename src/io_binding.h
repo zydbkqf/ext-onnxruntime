@@ -2,6 +2,7 @@
 #define PHP_ORT_IO_BINDING_H
 
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -40,17 +41,39 @@ public:
     /** Run the bound graph and copy outputs into owned Tensors. */
     std::vector<Tensor> run();
 
-    /** Outputs from the latest run(); throws before the first run. */
-    const std::vector<Tensor> &outputs() const;
+    /**
+     * Phase 7F: transfer exclusive ownership to an async Task.  After this
+     * returns, bindInput/bindOutput/run/getOutputs are rejected; the Task is
+     * the only reader and returns results through Task::getResult().
+     */
+    void markAsyncSubmitted();
+
+    /** Undo markAsyncSubmitted() if queue submission itself fails. */
+    void clearAsyncSubmitted();
+
+    /** Worker-thread entry point; requires a prior markAsyncSubmitted(). */
+    std::vector<Tensor> runForAsync();
+
+    /** Outputs from the latest synchronous run(); throws before the first run. */
+    std::vector<Tensor> outputs() const;
 
     const std::shared_ptr<SessionState> &session() const noexcept {
         return session_;
     }
 
 private:
+    void ensureMutableLocked() const;
+    std::vector<Tensor> runUnlocked();
     void rebindOutputs();
 
     std::shared_ptr<SessionState> session_;
+
+    // Phase 7F serializes binding access.  A binding handed to an async Task
+    // is single-use: PHP must read outputs from the Task, never from the
+    // binding, so no PHP thread can observe a worker half-way through a run.
+    mutable std::mutex mutex_;
+    bool running_ = false;
+    bool async_submitted_ = false;
 
     // Keep a deep copy of every input.  Numeric OrtValues below borrow these
     // payloads, so both vectors are reserved/resized before binding and are

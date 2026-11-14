@@ -14,9 +14,9 @@
   <email>denischeung@users.noreply.github.com</email>
   <active>yes</active>
  </lead>
- <date>2026-11-13</date>
+ <date>2026-11-14</date>
  <version>
-  <release>0.4.4</release>
+  <release>0.4.5</release>
   <api>0.4.0</api>
  </version>
  <stability>
@@ -24,7 +24,7 @@
   <api>beta</api>
  </stability>
  <license uri="https://opensource.org/licenses/MIT">MIT</license>
- <notes>Phase 7E with Windows native build support via config.w32. Includes Phase 7A CPU I/O Binding and Phase 7B fixed-shape preallocated output.</notes>
+ <notes>Phase 7C/7D device tensors and explicit device copies, plus Phase 7F async I/O Binding on the native Task engine. Includes Phase 7A CPU I/O Binding, Phase 7B fixed-shape preallocated output and Phase 7E explicit batch inference.</notes>
  <contents>
   <dir name="/">
    <file name="config.m4" role="src"/>
@@ -97,6 +97,8 @@
    <file name="tests/031-batch.phpt" role="test"/>
    <file name="tests/032-device-tensor-cpu.phpt" role="test"/>
    <file name="tests/033-device-tensor-cuda.phpt" role="test"/>
+   <file name="tests/034-async-iobinding.phpt" role="test"/>
+   <file name="tests/035-async-iobinding-preallocated.phpt" role="test"/>
    <file name="tests/build-smoke.sh" role="test"/>
    <file name="tests/native_stress.cpp" role="test"/>
    <file name="tests/native_async_stress.cpp" role="test"/>

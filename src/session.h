@@ -116,7 +116,7 @@ public:
     std::vector<Tensor> copyInputsForAsync(
         const std::vector<const Tensor *> &input_tensors) const;
 
-    std::unique_ptr<IoBindingState> createIoBinding();
+    std::shared_ptr<IoBindingState> createIoBinding();
 
     /** Shared native state; a future Task can retain this independently. */
     const std::shared_ptr<SessionState> &state() const;
