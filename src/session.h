@@ -9,6 +9,7 @@
 
 #include "ep_device.h"
 #include "onnx_tensor.h"
+#include "runtime.h"
 
 namespace php_ort {
 
@@ -71,17 +72,6 @@ public:
         const std::vector<const Tensor *> &input_tensors) const;
 
 private:
-    struct PluginLease {
-        std::vector<std::string> registrations;
-
-        PluginLease() = default;
-        PluginLease(const PluginLease &) = delete;
-        PluginLease &operator=(const PluginLease &) = delete;
-        ~PluginLease();
-
-        void acquire(const std::vector<EpDeviceInfo> &devices);
-    };
-
     // Declared before `session`: keeps the Env alive for the Ort::Session,
     // even if the module-level reference is released first.
     std::shared_ptr<Ort::Env> env;

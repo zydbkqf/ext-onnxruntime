@@ -1,0 +1,50 @@
+{
+    "name": "zydbkqf/ext-onnxruntime",
+    "type": "php-ext",
+    "description": "Native ONNX Runtime inference for PHP: Tensor conversion, I/O Binding, async tasks, device tensors, CoreML and CUDA Plugin EP support.",
+    "keywords": [
+        "onnx",
+        "onnxruntime",
+        "inference",
+        "machine-learning",
+        "php-extension",
+        "pie"
+    ],
+    "license": "MIT",
+    "homepage": "https://github.com/zydbkqf/ext-onnxruntime",
+    "authors": [
+        {
+            "name": "Denis Cheung",
+            "email": "zydbkqf@gmail.com"
+        }
+    ],
+    "support": {
+        "issues": "https://github.com/zydbkqf/ext-onnxruntime/issues",
+        "source": "https://github.com/zydbkqf/ext-onnxruntime"
+    },
+    "require": {
+        "php": ">=8.0 <8.6"
+    },
+    "replace": {
+        "ext-onnxruntime": "*"
+    },
+    "php-ext": {
+        "extension-name": "onnxruntime",
+        "support-zts": true,
+        "support-nts": true,
+        "os-families": [
+            "linux",
+            "darwin"
+        ],
+        "download-url-method": [
+            "composer-default"
+        ],
+        "configure-options": [
+            {
+                "name": "enable-onnxruntime",
+                "description": "Enable the ONNX Runtime PHP extension",
+                "needs-value": false
+            }
+        ]
+    }
+}

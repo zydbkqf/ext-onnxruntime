@@ -22,6 +22,7 @@
 
 #include "ep_device.h"
 #include "onnx_tensor.h"
+#include "runtime.h"
 
 namespace php_ort {
 
@@ -30,9 +31,9 @@ namespace php_ort {
  *
  * Lifetime rules:
  *   - `env` keeps the process Ort::Env alive while the allocator/value exist.
- *   - `plugin_registrations` keeps a Plugin EP library loaded for as long as
- *     this object exists.  It is acquired before allocation and released only
- *     after `value` has been destroyed (member destruction order).
+ *   - `plugin_lease` keeps a Plugin EP library loaded for as long as this
+ *     object exists.  It is acquired before allocation and released only
+ *     after `value` and the borrowed allocator have been destroyed.
  *   - The shared allocator is borrowed from the Env; releasing the Env's
  *     shared allocator independently is not required and would be unsafe while
  *     this value is alive.
@@ -99,9 +100,12 @@ private:
     void copyCpuMemory(const void *source, void *destination,
                        size_t bytes) const;
 
-    // Declared first: destroyed after the value and allocator.
-    std::vector<std::string> plugin_registrations_;
+    // Declared first: the Env outlives every member below.
     std::shared_ptr<Ort::Env> env_;
+
+    // Declared before the value/allocator so it is destroyed after them.  ORT
+    // must keep the plugin library loaded until device memory is freed.
+    PluginLease plugin_lease_;
 
     EpDeviceInfo device_;
     std::vector<int64_t> shape_;

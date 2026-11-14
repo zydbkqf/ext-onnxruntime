@@ -114,6 +114,13 @@ public:
 
     void shutdown();
 
+    /**
+     * Cancel a queued task and remove it from the engine queue in the same
+     * critical section.  Returns false when the task already left the queue
+     * or is no longer queued (running/completed/cancelled).
+     */
+    bool cancelTask(const std::shared_ptr<AsyncTaskState> &task);
+
     size_t workerCount() const noexcept { return worker_count_; }
     size_t queueCapacity() const noexcept { return queue_capacity_; }
     size_t queuedCount() const;
@@ -154,6 +161,13 @@ std::shared_ptr<AsyncTaskState> submitAsyncTask(
 std::shared_ptr<AsyncTaskState> submitAsyncBindingTask(
     std::shared_ptr<SessionState> session,
     std::shared_ptr<IoBindingState> binding);
+
+/**
+ * Cancel a queued Task through the owning AsyncEngine.  Removing the queue
+ * entry releases capacity immediately; a task that a worker has already
+ * popped can still transition to cancelled before beginRunning().
+ */
+bool cancelAsyncTask(const std::shared_ptr<AsyncTaskState> &task);
 
 /** Cancel queued work, wait for running work, and join all workers. */
 void shutdownAsyncEngine();

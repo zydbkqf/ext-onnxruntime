@@ -47,6 +47,29 @@ std::vector<std::string> acquirePluginSessions(
 /** Decrement active-session counts; must run after the Ort::Session is gone. */
 void releasePluginSessions(const std::vector<std::string> &registrations);
 
+/**
+ * RAII reservation for Plugin EP registrations.
+ *
+ * Declare it after the owning native object (Ort::Session, Ort::Value, ...)
+ * and before the Env/shared-library reference that must stay alive through
+ * release.  Member destruction order then guarantees the native object is
+ * destroyed before the registration lease is released.
+ */
+class PluginLease {
+public:
+    PluginLease() = default;
+    PluginLease(const PluginLease &) = delete;
+    PluginLease &operator=(const PluginLease &) = delete;
+    PluginLease(PluginLease &&) = delete;
+    PluginLease &operator=(PluginLease &&) = delete;
+    ~PluginLease();
+
+    void acquire(const std::vector<EpDeviceInfo> &devices);
+
+private:
+    std::vector<std::string> registrations_;
+};
+
 /** Unregister every plugin library tracked by this extension. */
 void shutdownRuntime();
 

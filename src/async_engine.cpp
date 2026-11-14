@@ -152,8 +152,31 @@ AsyncEngine::AsyncEngine(size_t worker_count, size_t queue_capacity)
     : worker_count_(worker_count), queue_capacity_(queue_capacity) {
     validateConfiguration(worker_count_, queue_capacity_);
     workers_.reserve(worker_count_);
-    for (size_t i = 0; i < worker_count_; ++i) {
-        workers_.emplace_back(&AsyncEngine::workerLoop, this);
+    try {
+        for (size_t i = 0; i < worker_count_; ++i) {
+            workers_.emplace_back(&AsyncEngine::workerLoop, this);
+        }
+    } catch (...) {
+        // The object's destructor will not run when a constructor throws.
+        // Wake and join every worker that was already created, otherwise
+        // std::vector<std::thread> would destroy joinable threads and call
+        // std::terminate().
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            stopping_ = true;
+            for (const std::shared_ptr<AsyncTaskState> &task : queue_) {
+                task->cancelQueued();
+            }
+            queue_.clear();
+        }
+        cv_.notify_all();
+        for (std::thread &worker : workers_) {
+            if (worker.joinable()) {
+                worker.join();
+            }
+        }
+        workers_.clear();
+        throw;
     }
 }
 
@@ -203,8 +226,30 @@ std::shared_ptr<AsyncTaskState> AsyncEngine::submitBinding(
     return task;
 }
 
-void AsyncEngine::shutdown() {
-    {
+bool AsyncEngine::cancelTask(const std::shared_ptr<AsyncTaskState> &task) {
+    if (task == nullptr) {
+        return false;
+    }
+
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = std::find_if(
+        queue_.begin(), queue_.end(),
+        [&task](const std::shared_ptr<AsyncTaskState> &queued) {
+            return queued->id() == task->id();
+        });
+    bool removed = false;
+    if (it != queue_.end()) {
+        queue_.erase(it);
+        removed = true;
+    }
+    bool cancelled = task->cancelQueued();
+    if (removed) {
+        cv_.notify_all();
+    }
+    return cancelled;
+}
+
+void AsyncEngine::shutdown() {    {
         std::lock_guard<std::mutex> lock(mutex_);
         if (stopping_ && workers_.empty()) {
             return;
@@ -376,6 +421,21 @@ std::shared_ptr<AsyncTaskState> submitAsyncBindingTask(
         binding->clearAsyncSubmitted();
         throw;
     }
+}
+
+bool cancelAsyncTask(const std::shared_ptr<AsyncTaskState> &task) {
+    if (task == nullptr) {
+        return false;
+    }
+    std::shared_ptr<AsyncEngine> engine;
+    {
+        std::lock_guard<std::mutex> lock(g_engine_mutex);
+        engine = g_engine;
+    }
+    if (engine != nullptr) {
+        return engine->cancelTask(task);
+    }
+    return task->cancelQueued();
 }
 
 void shutdownAsyncEngine() {

@@ -4,6 +4,40 @@ Phase 7F async I/O binding: Task owns binding, buffers stay alive, results are b
 <?php if (!extension_loaded('onnxruntime')) die('skip onnxruntime not loaded'); ?>
 --FILE--
 <?php
+function cuda_session(): ?OnnxRuntime\Session {
+    static $loaded = false;
+    static $session = null;
+    if ($loaded) return $session;
+    $loaded = true;
+
+    $dll = getenv('ONNXRUNTIME_CUDA_PLUGIN');
+    if ($dll === false || $dll === '') {
+        $dll = 'D:\\php\\onnxruntime_providers_cuda.dll';
+    }
+    if (!is_file($dll)) {
+        return null;
+    }
+
+    $rt = OnnxRuntime\Runtime::default();
+    $rt->registerExecutionProviderLibrary('cuda', $dll);
+    $cuda = null;
+    foreach ($rt->getEpDevices() as $device) {
+        if ($device->epName() === 'CUDAExecutionProvider') {
+            $cuda = $device;
+            break;
+        }
+    }
+    if ($cuda === null) {
+        return null;
+    }
+
+    $options = new OnnxRuntime\SessionOptions();
+    $options->appendEpDevice($cuda);
+    $session = new OnnxRuntime\Session(
+        __DIR__ . '/fixtures/identity.onnx', $options);
+    return $session;
+}
+
 $s = new OnnxRuntime\Session(__DIR__ . '/fixtures/identity.onnx');
 
 $b = $s->createIoBinding();
@@ -87,8 +121,31 @@ try {
 } catch (Throwable $e) {
     echo 'failed-task=', get_class($e), ':', $e->getMessage(), "\n";
 }
+
+// Run the same async binding path on CUDA when this host exposes a CUDA
+// Plugin EP device.  macOS/Linux CPU-only runs print cuda=skip.
+$cuda = cuda_session();
+if ($cuda === null) {
+    echo "cuda=skip\n";
+} else {
+    $cb = $cuda->createIoBinding();
+    $cb->bindInput('X', OnnxRuntime\Tensor::fromArray(
+        [[1.5, 2.5, 3.5], [4.5, 5.5, 6.5]], 'float32'));
+    $cb->bindOutput('Y');
+    $ct = $cuda->runWithBindingAsync($cb);
+    unset($cb);
+    if (!$ct->wait(30000)) {
+        throw new RuntimeException('CUDA async binding timed out');
+    }
+    $cuda_out = json_encode($ct->getResult()['Y']->toArray(),
+                            JSON_PRESERVE_ZERO_FRACTION);
+    if ($cuda_out !== '[[1.5,2.5,3.5],[4.5,5.5,6.5]]') {
+        throw new RuntimeException('CUDA async binding result: ' . $cuda_out);
+    }
+    echo "cuda=pass\n";
+}
 ?>
---EXPECT--
+--EXPECTF--
 class=OnnxRuntime\Task
 bind-after-submit=OnnxRuntime\ConversionException:I/O binding is owned by an async Task; read outputs with Task::getResult() and create a new binding for another run
 get-after-submit=OnnxRuntime\ConversionException:I/O binding outputs are owned by an async Task; use Task::getResult() after Task::wait()
@@ -101,3 +158,4 @@ out2=[[7.0,8.0,9.0],[10.0,11.0,12.0]]
 resubmit=OnnxRuntime\ConversionException:I/O binding has already been submitted to an async Task
 cross-session=OnnxRuntime\ConversionException:I/O binding belongs to a different Session
 failed-task=OnnxRuntime\ConversionException:output "Y" is not bound
+cuda=%s
