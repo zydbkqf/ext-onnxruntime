@@ -86,7 +86,7 @@ Python ORT 1.32.0 (`fastembed-gpu` 0.9.1), CUDA 13.4, cuDNN 9.28.1.4:
 | Provider | fastembed e2e | fastembed tokenizer+ORT | Python raw ORT | PHP ORT |
 | --- | ---: | ---: | ---: | ---: |
 | CPU | 241.7 ms | 238.8 ms | 239.6 ms | 224.3 ms |
-| CUDA | 3.77 ms | 3.72 ms | 3.26 ms | 3.11 ms |
+| CUDA | 3.62 ms | 3.68 ms | 3.15 ms | 3.04 ms |
 
 These are latency measurements for the fixed batch above, not throughput
 claims. They are single-machine samples and should be rerun on the deployment
