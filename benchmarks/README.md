@@ -63,9 +63,15 @@ python benchmarks\fastembed_int8_bpe.py ^
 ```
 
 On Windows, install `fastembed-gpu` (which brings `onnxruntime-gpu`) and make
-sure the CUDA/cuDNN DLLs are on `PATH` before running the benchmark.
+sure the CUDA/cuDNN DLLs are on `PATH` before running the benchmark. With
+CUDA 13 and the pip-provided cuDNN, add these directories:
 
-## Preliminary results
+```text
+<venv>\Lib\site-packages\nvidia\cudnn\bin
+<venv>\Lib\site-packages\nvidia\cu13\bin\x86_64
+```
+
+## Results
 
 macOS arm64, PHP 8.5.6 ZTS, extension ORT 1.28.2, Python ORT 1.28.0:
 
@@ -74,7 +80,16 @@ macOS arm64, PHP 8.5.6 ZTS, extension ORT 1.28.2, Python ORT 1.28.0:
 | CPU | 259.8 ms | 248.5 ms | 257.8 ms | 261.3 ms |
 | CoreML | 260.7 ms | 258.1 ms | 261.0 ms | 248.0 ms |
 
+Windows 11 x86_64, RTX 3050, PHP 8.5.12 ZTS, extension ORT 1.28.2,
+Python ORT 1.32.0 (`fastembed-gpu` 0.9.1), CUDA 13.4, cuDNN 9.28.1.4:
+
+| Provider | fastembed e2e | fastembed tokenizer+ORT | Python raw ORT | PHP ORT |
+| --- | ---: | ---: | ---: | ---: |
+| CPU | 241.7 ms | 238.8 ms | 239.6 ms | 224.3 ms |
+| CUDA | 3.77 ms | 3.72 ms | 3.26 ms | 3.11 ms |
+
 These are latency measurements for the fixed batch above, not throughput
 claims. They are single-machine samples and should be rerun on the deployment
-hardware. CUDA rows must be produced on a machine with the CUDA provider
-available; the script refuses to run if the provider is missing.
+hardware. The Python and PHP runs use different ORT builds (1.32.0 vs 1.28.2),
+so compare the columns as end-to-end samples, not as a controlled ORT-version
+study.
