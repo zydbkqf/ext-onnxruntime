@@ -37,6 +37,8 @@
    <file name="benchmarks/README.md" role="doc"/>
    <file name="benchmarks/fastembed_int8_bpe.py" role="test"/>
    <file name="benchmarks/php_ort_bench.php" role="test"/>
+   <file name="benchmarks/php_tokenize_ort_bench.php" role="test"/>
+   <file name="benchmarks/php_wordpiece.php" role="test"/>
    <file name="src/device_tensor.cpp" role="src"/>
    <file name="src/ep_device.cpp" role="src"/>
    <file name="src/async_engine.h" role="src"/>

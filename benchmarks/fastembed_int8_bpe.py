@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Compare FastEmbed, raw ONNX Runtime, and the PHP extension.
 
-Model: Qdrant/bge-small-en-v1.5-onnx-Q (int8 ONNX, BGE-small, BPE tokenizer).
+Model: Qdrant/bge-small-en-v1.5-onnx-Q (int8 ONNX, BGE-small, WordPiece tokenizer).
 
 The benchmark separates three measurements:
 
@@ -19,7 +19,7 @@ Example:
     --php /usr/local/bin/php \
     --extension modules/onnxruntime.so \
     --provider coreml \
-    --iterations 20
+    --iterations 100
 """
 
 from __future__ import annotations
@@ -46,12 +46,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--php", required=True, help="PHP executable")
     parser.add_argument("--extension", required=True, help="onnxruntime extension path")
     parser.add_argument("--php-script", default=str(Path(__file__).with_name("php_ort_bench.php")))
+    parser.add_argument("--php-tokenize-script",
+                        default=str(Path(__file__).with_name("php_tokenize_ort_bench.php")))
     parser.add_argument("--provider", choices=["cpu", "coreml", "cuda"], default="cpu")
     parser.add_argument("--cuda-lib", default=None, help="CUDA provider DLL for PHP (Windows)")
     parser.add_argument("--ort-lib-dir", default=None, help="ORT shared-library directory")
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--sequence-length", type=int, default=64)
-    parser.add_argument("--iterations", type=int, default=20)
+    parser.add_argument("--iterations", type=int, default=100)
     parser.add_argument("--warmup", type=int, default=3)
     parser.add_argument("--threads", type=int, default=1)
     parser.add_argument("--output", default=None, help="write the result JSON here")
@@ -169,6 +171,34 @@ def main() -> int:
 
     php_result = json.loads(proc.stdout.strip().splitlines()[-1])
 
+    tokenize_spec = {
+        "model": str(model_path),
+        "provider": args.provider,
+        "cuda_lib": args.cuda_lib,
+        "threads": args.threads,
+        "iterations": args.iterations,
+        "warmup": args.warmup,
+        "tokenizer_path": str(model_dir / "tokenizer.json"),
+        "text": text,
+        "batch_size": args.batch_size,
+        "sequence_length": args.sequence_length,
+    }
+    with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as handle:
+        json.dump(tokenize_spec, handle)
+        tokenize_spec_path = handle.name
+
+    tokenize_proc = subprocess.run(
+        [args.php, "-n", "-d", f"extension={Path(args.extension).resolve()}",
+         str(Path(args.php_tokenize_script).resolve()), tokenize_spec_path],
+        env=env, text=True, capture_output=True)
+    os.unlink(tokenize_spec_path)
+    if tokenize_proc.returncode != 0:
+        sys.stderr.write(tokenize_proc.stdout)
+        sys.stderr.write(tokenize_proc.stderr)
+        raise SystemExit(f"PHP tokenize benchmark failed with exit code {tokenize_proc.returncode}")
+
+    php_tokenize_result = json.loads(tokenize_proc.stdout.strip().splitlines()[-1])
+
     result = {
         "platform": platform.platform(),
         "machine": platform.machine(),
@@ -185,6 +215,7 @@ def main() -> int:
         "fastembed_ort": fastembed_ort,
         "raw_ort_python": raw_ort,
         "php_ort": php_result,
+        "php_tokenize_ort": php_tokenize_result,
     }
 
     if args.output:

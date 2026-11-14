@@ -2,7 +2,7 @@
 
 A native PHP extension that loads ONNX models and runs inference directly from PHP, using the Zend C API, C++, and the ONNX Runtime native library. It does not use FFI or Python.
 
-Current status: synchronous inference, native async tasks, CPU I/O Binding, fixed-shape preallocated outputs, device tensors, explicit device copies, explicit multi-group batch inference, and async I/O Binding are implemented. The current feature set is verified on macOS arm64, Windows x86_64 ZTS, Linux x86_64 ZTS, and Linux x86_64 NTS (33/35 PHPT, with CoreML and Windows-CUDA platform skips). The Windows CUDA Plugin EP smoke path has passed: register the provider DLL, enumerate the CUDA `EpDevice`, append it with `appendEpDevice()`, and run inference on the NVIDIA GPU. This is a smoke result, not general Plugin EP acceptance across every provider, platform, unload sequence, and failure mode.
+Current status: synchronous inference, native async tasks, CPU I/O Binding, fixed-shape preallocated outputs, device tensors, explicit device copies, explicit multi-group batch inference, and async I/O Binding are implemented. The current feature set is verified on macOS arm64 ZTS and NTS, Windows x86_64 ZTS, Linux x86_64 ZTS, and Linux x86_64 NTS (33/35 PHPT, with CoreML and Windows-CUDA platform skips). The Windows CUDA Plugin EP smoke path has passed: register the provider DLL, enumerate the CUDA `EpDevice`, append it with `appendEpDevice()`, and run inference on the NVIDIA GPU. This is a smoke result, not general Plugin EP acceptance across every provider, platform, unload sequence, and failure mode.
 
 Execution providers have two distinct entry points:
 
@@ -25,21 +25,21 @@ When no EP is appended, ORT defaults are preserved; this project does not promis
 
 ## Support Status
 
-| Platform | PHP | Thread mode | Build type | Status |
-| --- | --- | --- | --- | --- |
-| macOS arm64 | 8.5.6 | ZTS | Release | Verified: 34/35 PHPT, 1 Windows-CUDA skip (`033`), ASan, native sync/async stress |
-| macOS arm64 | 8.x | NTS | Debug/Release | Not verified |
-| Linux x86_64 | 8.5.12 | NTS | Release | Verified: 33/35 PHPT, 2 platform skips (CoreML, Windows CUDA); new `--with-onnxruntime=DIR` build path |
-| Linux x86_64 | 8.5.12 | ZTS | Release | Verified: 33/35 PHPT, 2 platform skips (CoreML, Windows CUDA); async ASan+LSan passed; Swoole 6.2.1 Fiber/coroutine/process/thread, `pcntl_fork`, `parallel` |
-| Linux arm64 | 8.x | ZTS/NTS | Debug/Release | Not verified |
-| Linux x86_64 | 8.x | Any | Debug | Not verified |
-| Windows x86_64 | 8.5.12 | ZTS | Release | Verified: 34/35 PHPT, 1 CoreML platform skip; `034`/`035` CPU+CUDA async binding; native I/O Binding stress; CUDA Plugin EP smoke |
+| Platform | PHP | Thread mode | Status |
+| --- | --- | --- | --- |
+| macOS arm64 | 8.5.6 | ZTS | Verified: 34/35 PHPT, 1 Windows-CUDA skip (`033`), ASan, native sync/async stress |
+| macOS arm64 | 8.5.12 | NTS | Verified: 34/35 PHPT, 1 Windows-CUDA skip (`033`); Homebrew PHP build |
+| Linux x86_64 | 8.5.12 | NTS | Verified: 33/35 PHPT, 2 platform skips (CoreML, Windows CUDA); new `--with-onnxruntime=DIR` build path |
+| Linux x86_64 | 8.5.12 | ZTS | Verified: 33/35 PHPT, 2 platform skips (CoreML, Windows CUDA); async ASan+LSan passed; Swoole 6.2.1 Fiber/coroutine/process/thread, `pcntl_fork`, `parallel` |
+| Linux arm64 | 8.x | ZTS/NTS | Not verified |
+| Linux x86_64 | 8.x | Any | Debug builds not verified |
+| Windows x86_64 | 8.5.12 | ZTS | Verified: 34/35 PHPT, 1 CoreML platform skip; `034`/`035` CPU+CUDA async binding; native I/O Binding stress; CUDA Plugin EP smoke |
 
-The PHP code targets the Zend API in PHP 8.0–8.5 and rejects versions below 8.0 at compile time. Verified environments: macOS arm64 PHP 8.5.6 ZTS; Linux x86_64 PHP 8.5.12 NTS and ZTS (current feature set, Swoole 6.2.1 on ZTS); Windows x86_64 PHP 8.5.12 ZTS with VS 2026 + MSVC 14.44 and ORT 1.28.2, all Release builds. Debug builds, Linux arm64, macOS NTS, Windows NTS, and other unlisted combinations are not claimed as supported. `phpize`/`php-config` determine the ZTS/NTS and Debug/Release configuration; the resulting module must be installed into the extension_dir of the same PHP build and loaded by that same `php` binary.
+The PHP code targets the Zend API in PHP 8.0–8.5 and rejects versions below 8.0 at compile time. Verified environments: macOS arm64 PHP 8.5.6 ZTS and PHP 8.5.12 NTS (Homebrew); Linux x86_64 PHP 8.5.12 NTS and ZTS (current feature set, Swoole 6.2.1 on ZTS); Windows x86_64 PHP 8.5.12 ZTS with VS 2026 + MSVC 14.44 and ORT 1.28.2. Debug builds, Linux arm64, Windows NTS, and other unlisted combinations are not claimed as supported. `phpize`/`php-config` determine the ZTS/NTS and Debug/Release configuration; the resulting module must be installed into the extension_dir of the same PHP build and loaded by that same `php` binary.
 
 ## Requirements
 
-- PHP 8.x; the currently verified version is PHP 8.5.6 CLI ZTS (Zend Module API `20250925`)
+- PHP 8.x; verified with PHP 8.5.6 CLI ZTS and PHP 8.5.12 CLI NTS (Zend Module API `20250925`)
 - `phpize` / `php-config` from the same PHP installation that will load the extension
 - A C++17 compiler (Apple clang on macOS; g++/clang++ on Linux)
 - An ONNX Runtime v1.28.2 (`ORT_API_VERSION 28`) **include + shared library** SDK
@@ -57,8 +57,6 @@ onnxruntime-<platform>-1.28.2/
 The SDK root is passed to `configure`; `include/` and `lib/` are derived from
 that directory. The extension **does not vendor the ONNX Runtime source tree**
 and does not bake a platform-specific prebuilt library into the build scripts.
-The `third_party/onnxruntime` directory in this repository is a local
-development SDK, not a production dependency.
 
 `config.m4` verifies that `onnxruntime_cxx_api.h` and `libonnxruntime.*` exist.
 `--with-onnxruntime` is required; `./configure` fails instead of silently
@@ -71,14 +69,6 @@ Standard external-SDK build:
 ```bash
 phpize
 ./configure --with-onnxruntime=/opt/onnxruntime-linux-x64-1.28.2
-make -j8
-```
-
-For local development against the repository SDK:
-
-```bash
-phpize
-./configure --with-onnxruntime="$PWD/third_party/onnxruntime"
 make -j8
 ```
 
@@ -183,7 +173,7 @@ Build the PECL source package:
 pecl package package.xml
 ```
 
-The output is `onnxruntime-0.4.7.tgz`. `package.xml` contains extension sources, build files, tests, and documentation, but not the `third_party/` development SDK. Builds from that package still need an external ONNX Runtime SDK as described above.
+The output is `onnxruntime-0.4.7.tgz`. `package.xml` contains extension sources, build files, tests, and documentation, but not an ONNX Runtime SDK. Builds from that package still need an external ONNX Runtime SDK as described above.
 
 ### PIE (Composer)
 
@@ -446,8 +436,7 @@ Compile/load/basic Tensor/inference smoke:
 bash tests/build-smoke.sh /opt/onnxruntime-linux-x64-1.28.2
 ```
 
-Pass the extracted ONNX Runtime SDK root. For the repository development SDK
-use `bash tests/build-smoke.sh "$PWD/third_party/onnxruntime"`.
+Pass the extracted ONNX Runtime SDK root.
 
 The script runs `phpize --clean`, `phpize`, `configure --with-onnxruntime=DIR`, `make`, module loading, `Tensor::fromArray()`, `identity.onnx` inference, and the full PHPT suite. macOS adds an ad-hoc signature automatically.
 
@@ -465,11 +454,12 @@ The GitHub Actions workflow is `.github/workflows/ci.yml`; it downloads the ORT 
 ## Benchmark
 
 `benchmarks/fastembed_int8_bpe.py` compares FastEmbed against the PHP extension
-on `Qdrant/bge-small-en-v1.5-onnx-Q` (BGE-small, int8 ONNX, BPE tokenizer).
-It reports FastEmbed end-to-end, FastEmbed tokenizer + ORT, and PHP ORT-only
-latency separately; the PHP extension has no BPE tokenizer, so PHP numbers are
-inference-only. See `benchmarks/README.md` for the exact workload and current
-CPU/CoreML results.
+on `Qdrant/bge-small-en-v1.5-onnx-Q` (BGE-small, int8 ONNX, WordPiece tokenizer).
+It reports FastEmbed end-to-end, FastEmbed tokenizer + ORT, Python raw ORT,
+PHP tokenization + ORT, and PHP ORT-only latency separately. The PHP
+tokenization path is implemented in PHP (`benchmarks/php_wordpiece.php`), so it
+does not call Python for tokenization. See `benchmarks/README.md` for the exact
+workload and current CPU/CoreML/CUDA results.
 
 ## Directory Layout
 
@@ -498,9 +488,10 @@ tests/
   *.phpt                   # 35 PHPT tests
   fixtures/                # Local ONNX models
 benchmarks/
-  fastembed_int8_bpe.py    # FastEmbed vs raw ORT vs PHP ORT
+  fastembed_int8_bpe.py    # FastEmbed vs raw ORT vs PHP ORT/tokenize+ORT
   php_ort_bench.php        # PHP-side timing with pre-tokenized inputs
-third_party/onnxruntime/   # macOS arm64 development SDK only (not a production dependency)
+  php_tokenize_ort_bench.php # PHP tokenization + ORT timing
+  php_wordpiece.php        # PHP WordPiece tokenizer for the benchmark
 docs/                      # design documents (DOCX)
 ```
 
