@@ -13,7 +13,7 @@ When no EP is appended, ORT defaults are preserved; this project does not promis
 
 ## Before You Use This
 
-1. **This project is mainly for developers who do not want a Python runtime.** It is not automatically faster. Converting PHP zval data into a Tensor has real cost, and depending on payload size and call pattern it may not beat a separate Python process over IPC or HTTP. Benchmark the entire path, not only the ORT kernel time.
+1. **This project is mainly for developers who do not want a Python runtime.** It is not automatically faster. Converting PHP zval data into a Tensor has real cost, and depending on payload size and call pattern it may not beat a separate Python process over IPC or HTTP. Benchmark the entire path, not only the ORT kernel time. See `benchmarks/README.md` for the exact workload and current CPU/CoreML/CUDA results.
 
 2. **Do not run long synchronous inference inside a shared PHP-FPM pool.** A request occupies its FPM worker until inference returns; enough concurrent requests can exhaust the pool and stall unrelated traffic. Prefer a dedicated CLI worker, a dedicated process, or an isolated service. If you use threads, use a ZTS build and isolate thread usage, and validate it. ZTS alone does not make an arbitrary application thread-safe.
 
@@ -32,7 +32,6 @@ When no EP is appended, ORT defaults are preserved; this project does not promis
 | Linux x86_64 | 8.5.12 | NTS | Verified: 33/35 PHPT, 2 platform skips (CoreML, Windows CUDA); new `--with-onnxruntime=DIR` build path |
 | Linux x86_64 | 8.5.12 | ZTS | Verified: 33/35 PHPT, 2 platform skips (CoreML, Windows CUDA); async ASan+LSan passed; Swoole 6.2.1 Fiber/coroutine/process/thread, `pcntl_fork`, `parallel` |
 | Linux arm64 | 8.x | ZTS/NTS | Not verified |
-| Linux x86_64 | 8.x | Any | Debug builds not verified |
 | Windows x86_64 | 8.5.12 | ZTS | Verified: 34/35 PHPT, 1 CoreML platform skip; `034`/`035` CPU+CUDA async binding; native I/O Binding stress; CUDA Plugin EP smoke |
 
 The PHP code targets the Zend API in PHP 8.0–8.5 and rejects versions below 8.0 at compile time. Verified environments: macOS arm64 PHP 8.5.6 ZTS and PHP 8.5.12 NTS (Homebrew); Linux x86_64 PHP 8.5.12 NTS and ZTS (current feature set, Swoole 6.2.1 on ZTS); Windows x86_64 PHP 8.5.12 ZTS with VS 2026 + MSVC 14.44 and ORT 1.28.2. Debug builds, Linux arm64, Windows NTS, and other unlisted combinations are not claimed as supported. `phpize`/`php-config` determine the ZTS/NTS and Debug/Release configuration; the resulting module must be installed into the extension_dir of the same PHP build and loaded by that same `php` binary.
@@ -88,11 +87,7 @@ Prerequisites:
 - ONNX Runtime **Windows x64** SDK containing `include\onnxruntime_cxx_api.h`
   and `lib\onnxruntime.lib`
 
-The Windows SDK root is passed as the same configure option:
-
-```bat
-configure --with-onnxruntime=E:\ort\onnxruntime-win-x64-1.28.2 --with-prefix=D:\php
-```
+The Windows SDK root is passed as the same configure option.
 
 `config.w32` checks those paths and links only `onnxruntime.lib`. GPU provider
 DLLs (`onnxruntime_providers_cuda.dll`, `onnxruntime_providers_shared.dll`,
@@ -145,35 +140,13 @@ php -d extension=onnxruntime.so --ri onnxruntime
 
 `php --ri onnxruntime` should report extension version `0.4.0`. Use `php -n -d extension=...` to exclude unrelated ini settings while debugging.
 
-### Runtime library loading
+### PECL
 
-The extension needs `libonnxruntime` at runtime. If the ORT library is not in the system loader's default path, choose one of:
-
-```bash
-# macOS
-export DYLD_LIBRARY_PATH=/opt/onnxruntime/lib:$DYLD_LIBRARY_PATH
-
-# Linux
-export LD_LIBRARY_PATH=/opt/onnxruntime/lib:$LD_LIBRARY_PATH
-```
-
-Or write an rpath at build time:
+Install the extension with PECL:
 
 ```bash
-ONNXRUNTIME_RPATH=/opt/onnxruntime/lib ./configure --with-onnxruntime=/opt/onnxruntime
+pecl install onnxruntime
 ```
-
-An rpath is a fixed path inside the binary. Release packages must ensure that the target machine uses the same ORT location. For relocatable installs, prefer a system library path or runtime environment variables.
-
-### PECL source package
-
-Build the PECL source package:
-
-```bash
-pecl package package.xml
-```
-
-The output is `onnxruntime-0.4.7.tgz`. `package.xml` contains extension sources, build files, tests, and documentation, but not an ONNX Runtime SDK. Builds from that package still need an external ONNX Runtime SDK as described above.
 
 ### PIE (Composer)
 
@@ -492,10 +465,7 @@ benchmarks/
   php_ort_bench.php        # PHP-side timing with pre-tokenized inputs
   php_tokenize_ort_bench.php # PHP tokenization + ORT timing
   php_wordpiece.php        # PHP WordPiece tokenizer for the benchmark
-docs/                      # design documents (DOCX)
 ```
-
-Stable baseline: [BASELINE.md](docs/BASELINE.md).
 
 ## License
 
