@@ -84,7 +84,9 @@ final class BenchWordPieceTokenizer
         $text = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/u', '', $text) ?? $text;
         $text = preg_replace('/\s+/u', ' ', $text) ?? $text;
         $text = trim($text);
-        return mb_strtolower($text, 'UTF-8');
+        return function_exists('mb_strtolower')
+            ? mb_strtolower($text, 'UTF-8')
+            : strtolower($text);
     }
 
     /** @return list<int> */

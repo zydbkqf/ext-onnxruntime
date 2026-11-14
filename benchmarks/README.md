@@ -87,9 +87,18 @@ macOS arm64, PHP 8.5.12 NTS (Homebrew), extension ORT 1.28.2, Python ORT
 | CPU | 252.2 ms | 252.5 ms | 251.2 ms | 253.2 ms | 251.3 ms |
 | CoreML | 253.2 ms | 254.5 ms | 255.6 ms | 253.3 ms | 255.1 ms |
 
-Windows 100-run values are not included in this revision. The previous Windows
-numbers were measured with 20 iterations and are not directly comparable with
-the 100-run table above; rerun with `--iterations 100` before publishing them.
+Windows 11 x86_64, RTX 3050, PHP 8.5.12 ZTS, extension ORT 1.28.2,
+Python ORT 1.32.0 (`fastembed-gpu` 0.9.1), CUDA 13.4, cuDNN 9.28.1.4,
+100 measured runs:
+
+| Provider | fastembed e2e | fastembed tokenizer+ORT | Python raw ORT | PHP tokenize+ORT | PHP ORT |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| CPU | 241.4 ms | 240.7 ms | 239.6 ms | 226.2 ms | 223.2 ms |
+| CUDA | 3.73 ms | 3.67 ms | 3.04 ms | 3.27 ms | 3.10 ms |
+
+Windows CUDA is dominated by the GPU path: PHP tokenize+ORT is about 0.18 ms
+slower than PHP ORT-only for this fixed batch, while the FastEmbed Python
+wrapper is about 0.69 ms slower than raw ORT.
 
 These are latency measurements for the fixed batch above, not throughput
 claims. They are single-machine samples and should be rerun on the deployment
