@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "async_engine.h"
+#include "io_binding.h"
 #include "ort_environment.h"
 #include "session.h"
 
@@ -80,6 +81,35 @@ int main(int argc, char **argv) {
         auto outputs = task->resultCopy();
         if (outputs.size() != 1 || outputs[0].shape != std::vector<int64_t>({2, 3})) {
             fail("async task returned an unexpected output");
+        }
+    }
+
+    // Phase 7F: each Task owns a distinct binding and its buffers.  The
+    // binding is marked single-use before it enters the queue.
+    std::vector<std::shared_ptr<php_ort::AsyncTaskState>> binding_tasks;
+    for (int i = 0; i < 8; ++i) {
+        auto binding = std::make_shared<php_ort::IoBindingState>(
+            session, session->nativeSession());
+        binding->bindInput("X", input);
+        binding->bindOutput("Y");
+        binding->markAsyncSubmitted();
+        binding_tasks.push_back(
+            engine->submitBinding(session, std::move(binding)));
+    }
+    for (const auto &task : binding_tasks) {
+        if (!task->wait(10000)) {
+            fail("async binding task did not finish");
+        }
+        if (task->status() != php_ort::AsyncTaskStatus::Completed) {
+            fail("async binding task failed");
+        }
+        auto outputs = task->resultCopy();
+        if (outputs.size() != 1 ||
+            outputs[0].shape != std::vector<int64_t>({2, 3})) {
+            fail("async binding task returned an unexpected output");
+        }
+        if (outputs[0].data.size() != 6 * sizeof(float)) {
+            fail("async binding output payload size mismatch");
         }
     }
 
