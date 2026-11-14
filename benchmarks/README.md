@@ -50,6 +50,21 @@ Provider values:
 - `cuda`: `CUDAExecutionProvider` (Windows/Linux with `onnxruntime-gpu`,
   plus `--cuda-lib` pointing at the PHP CUDA provider DLL on Windows)
 
+Windows CUDA example:
+
+```bat
+python benchmarks\fastembed_int8_bpe.py ^
+  --model-dir C:\models\bge-small-en-v1.5-onnx-Q ^
+  --php D:\php\php.exe ^
+  --extension D:\php\ext\php_onnxruntime.dll ^
+  --provider cuda ^
+  --cuda-lib D:\php\onnxruntime_providers_cuda.dll ^
+  --ort-lib-dir E:\www\ext-onnxruntime\third_party\onnxruntime\lib
+```
+
+On Windows, install `fastembed-gpu` (which brings `onnxruntime-gpu`) and make
+sure the CUDA/cuDNN DLLs are on `PATH` before running the benchmark.
+
 ## Preliminary results
 
 macOS arm64, PHP 8.5.6 ZTS, extension ORT 1.28.2, Python ORT 1.28.0:

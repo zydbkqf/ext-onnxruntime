@@ -33,17 +33,10 @@
    <file name="composer.json" role="doc"/>
    <file name="LICENSE" role="doc"/>
    <file name="NOTICE" role="doc"/>
+   <file name="docs/BASELINE.md" role="doc"/>
    <file name="benchmarks/README.md" role="doc"/>
    <file name="benchmarks/fastembed_int8_bpe.py" role="test"/>
    <file name="benchmarks/php_ort_bench.php" role="test"/>
-   <file name="docs/PHASE1.md" role="doc"/>
-   <file name="docs/PHASE2.md" role="doc"/>
-   <file name="docs/PHASE3.md" role="doc"/>
-   <file name="docs/PHASE4.md" role="doc"/>
-   <file name="docs/PHASE5.md" role="doc"/>
-   <file name="docs/PHASE6.md" role="doc"/>
-   <file name="docs/PHASE7.md" role="doc"/>
-   <file name="docs/BASELINE.md" role="doc"/>
    <file name="src/device_tensor.cpp" role="src"/>
    <file name="src/ep_device.cpp" role="src"/>
    <file name="src/async_engine.h" role="src"/>
