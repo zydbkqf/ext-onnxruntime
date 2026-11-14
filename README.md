@@ -93,6 +93,31 @@ make -j8
 
 Output: `modules/onnxruntime.so`
 
+### Windows native build
+
+Windows uses the PHP SDK build system, not `phpize`/`configure` from the Unix
+tree. The repository therefore ships `config.w32`.
+
+Prerequisites:
+
+- PHP 8.5 x64 **ZTS** runtime, plus the matching PHP SDK build environment
+- Visual Studio C++ toolset and Windows SDK. PHP's Windows build scripts are
+  normally validated with the VS 2022 toolchain; a VS 2026-only installation
+  must still provide a compatible MSVC/Windows SDK setup.
+- ONNX Runtime **Windows x64** SDK containing `include/onnxruntime_cxx_api.h`
+  and `lib/onnxruntime.lib`
+- `ONNXRUNTIME_ROOT` pointing at the SDK root, or both
+  `ONNXRUNTIME_INCLUDEDIR` and `ONNXRUNTIME_LIBDIR`
+
+`config.w32` checks those paths and links only `onnxruntime.lib`. GPU provider
+DLLs (`onnxruntime_providers_cuda.dll`, `onnxruntime_providers_shared.dll`,
+etc.) are runtime dependencies and must be deployed next to the ORT DLL; they
+are not linked into the PHP extension.
+
+The repository's verified ORT baseline is **1.28.2**. ORT 1.32 can be used for
+Windows GPU experiments, but its provider/CUDA/cuDNN requirements differ and
+its results must be recorded as a separate OS/ORT baseline.
+
 `config.m4` link policy:
 
 - macOS/BSD links `-lc++`; Linux links `-lstdc++` by default and switches to `-lc++` when `-stdlib=libc++` is explicitly present.

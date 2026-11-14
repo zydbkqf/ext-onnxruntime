@@ -16,7 +16,7 @@
  </lead>
  <date>2026-11-13</date>
  <version>
-  <release>0.4.3</release>
+  <release>0.4.4</release>
   <api>0.4.0</api>
  </version>
  <stability>
@@ -24,10 +24,11 @@
   <api>beta</api>
  </stability>
  <license uri="https://opensource.org/licenses/MIT">MIT</license>
- <notes>Phase 7E: Session::runBatch() for explicit lists of independent input groups. Includes Phase 7A CPU I/O Binding and Phase 7B fixed-shape preallocated output.</notes>
+ <notes>Phase 7E with Windows native build support via config.w32. Includes Phase 7A CPU I/O Binding and Phase 7B fixed-shape preallocated output.</notes>
  <contents>
   <dir name="/">
    <file name="config.m4" role="src"/>
+   <file name="config.w32" role="src"/>
    <file name="README.md" role="doc"/>
    <file name="LICENSE" role="doc"/>
    <file name="NOTICE" role="doc"/>

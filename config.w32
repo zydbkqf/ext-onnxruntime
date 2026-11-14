@@ -1,0 +1,54 @@
+// vim:ft=javascript
+//
+// Windows build configuration for the ONNX Runtime PHP extension.
+//
+// This file is intentionally separate from config.m4: PHP on Windows uses
+// the php-sdk build system (buildconf/configure/nmake), not autoconf/phpize.
+//
+// Required environment:
+//   ONNXRUNTIME_ROOT        ORT SDK root containing include\ and lib\
+//   ONNXRUNTIME_INCLUDEDIR  optional explicit include directory
+//   ONNXRUNTIME_LIBDIR      optional explicit library directory
+//
+// The SDK must be x64 and must contain onnxruntime.lib.  GPU provider DLLs
+// are runtime dependencies and are not linked into the PHP extension.
+
+ARG_ENABLE("onnxruntime", "Enable ONNX Runtime support", "no");
+
+if (PHP_ONNXRUNTIME != "no") {
+	var ort_include = WshShell.Environment("Process").Item("ONNXRUNTIME_INCLUDEDIR");
+	var ort_lib = WshShell.Environment("Process").Item("ONNXRUNTIME_LIBDIR");
+	var ort_root = WshShell.Environment("Process").Item("ONNXRUNTIME_ROOT");
+
+	if (!ort_include && ort_root) {
+		ort_include = ort_root + "\\include";
+	}
+	if (!ort_lib && ort_root) {
+		ort_lib = ort_root + "\\lib";
+	}
+
+	if (!ort_include || !ort_lib) {
+		ERROR("ONNXRUNTIME_ROOT (or ONNXRUNTIME_INCLUDEDIR + ONNXRUNTIME_LIBDIR) is required for the Windows build.");
+	}
+	if (!FSO.FileExists(ort_include + "\\onnxruntime_cxx_api.h")) {
+		ERROR("onnxruntime_cxx_api.h not found in " + ort_include);
+	}
+	if (!FSO.FileExists(ort_lib + "\\onnxruntime.lib")) {
+		ERROR("onnxruntime.lib not found in " + ort_lib);
+	}
+
+	ADD_FLAG("LDFLAGS_ONNXRUNTIME", "/LIBPATH:\"" + ort_lib + "\"");
+	ADD_FLAG("LIBS_ONNXRUNTIME", "onnxruntime.lib");
+
+	EXTENSION("onnxruntime",
+		"src/onnxruntime.cpp src/onnx_tensor.cpp src/zval_converter.cpp " +
+		"src/ort_value_converter.cpp src/ort_environment.cpp src/session.cpp " +
+		"src/session_options.cpp src/runtime.cpp src/ep_device.cpp " +
+		"src/async_engine.cpp src/io_binding.cpp",
+		PHP_ONNXRUNTIME_SHARED,
+		"/std:c++17 /EHsc /I \"" + ort_include + "\" " +
+		"/DZEND_ENABLE_STATIC_TSRMLS_CACHE=1");
+
+	AC_DEFINE("HAVE_ONNXRUNTIME", 1,
+		"Define to 1 if the ONNX Runtime extension is available.");
+}
