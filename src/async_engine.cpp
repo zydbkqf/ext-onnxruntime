@@ -249,7 +249,8 @@ bool AsyncEngine::cancelTask(const std::shared_ptr<AsyncTaskState> &task) {
     return cancelled;
 }
 
-void AsyncEngine::shutdown() {    {
+void AsyncEngine::shutdown() {
+    {
         std::lock_guard<std::mutex> lock(mutex_);
         if (stopping_ && workers_.empty()) {
             return;
