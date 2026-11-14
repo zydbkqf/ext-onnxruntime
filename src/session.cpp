@@ -321,8 +321,8 @@ std::vector<Tensor> Session::copyInputsForAsync(
     return state_->copyInputsForAsync(input_tensors);
 }
 
-std::unique_ptr<IoBindingState> Session::createIoBinding() {
-    return std::make_unique<IoBindingState>(state_, state_->nativeSession());
+std::shared_ptr<IoBindingState> Session::createIoBinding() {
+    return std::make_shared<IoBindingState>(state_, state_->nativeSession());
 }
 
 const std::shared_ptr<SessionState> &Session::state() const {

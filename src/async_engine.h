@@ -16,6 +16,8 @@
 
 namespace php_ort {
 
+class IoBindingState;
+
 enum class AsyncTaskStatus {
     Queued,
     Running,
@@ -35,6 +37,13 @@ public:
     AsyncTaskState(std::shared_ptr<SessionState> session,
                    std::vector<Tensor> inputs,
                    std::vector<std::string> output_names);
+
+    /**
+     * Phase 7F: the Task owns the binding and every input/output buffer in
+     * it.  The worker never sees a PHP IoBinding object.
+     */
+    AsyncTaskState(std::shared_ptr<SessionState> session,
+                   std::shared_ptr<IoBindingState> binding);
     ~AsyncTaskState() = default;
 
     AsyncTaskState(const AsyncTaskState &) = delete;
@@ -66,11 +75,15 @@ public:
 
     std::shared_ptr<SessionState> session() const noexcept { return session_; }
     const std::vector<Tensor> &inputs() const noexcept { return inputs_; }
+    std::shared_ptr<IoBindingState> binding() const noexcept {
+        return binding_;
+    }
 
 private:
     const uint64_t id_;
     std::shared_ptr<SessionState> session_;
     std::vector<Tensor> inputs_;
+    std::shared_ptr<IoBindingState> binding_;
     std::vector<std::string> output_names_;
     std::vector<Tensor> outputs_;
     std::exception_ptr error_;
@@ -94,6 +107,10 @@ public:
     std::shared_ptr<AsyncTaskState> submit(
         std::shared_ptr<SessionState> session,
         std::vector<Tensor> inputs);
+
+    std::shared_ptr<AsyncTaskState> submitBinding(
+        std::shared_ptr<SessionState> session,
+        std::shared_ptr<IoBindingState> binding);
 
     void shutdown();
 
@@ -129,6 +146,14 @@ size_t asyncEngineRunningCount();
 std::shared_ptr<AsyncTaskState> submitAsyncTask(
     std::shared_ptr<SessionState> session,
     std::vector<Tensor> inputs);
+
+/**
+ * Phase 7F: submit an I/O binding.  The binding is marked single-use before
+ * it enters the queue; ownership moves to the returned Task.
+ */
+std::shared_ptr<AsyncTaskState> submitAsyncBindingTask(
+    std::shared_ptr<SessionState> session,
+    std::shared_ptr<IoBindingState> binding);
 
 /** Cancel queued work, wait for running work, and join all workers. */
 void shutdownAsyncEngine();
