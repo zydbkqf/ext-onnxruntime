@@ -41,9 +41,9 @@
         ],
         "configure-options": [
             {
-                "name": "enable-onnxruntime",
-                "description": "Enable the ONNX Runtime PHP extension",
-                "needs-value": false
+                "name": "with-onnxruntime",
+                "description": "Path to the ONNX Runtime SDK root containing include/ and lib/",
+                "needs-value": true
             }
         ]
     }

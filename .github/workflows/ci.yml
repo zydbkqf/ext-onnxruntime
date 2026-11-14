@@ -38,10 +38,9 @@ jobs:
             -o "$RUNNER_TEMP/ort.tgz"
           mkdir -p "$RUNNER_TEMP/ort"
           tar -xzf "$RUNNER_TEMP/ort.tgz" -C "$RUNNER_TEMP/ort" --strip-components=1
-          echo "ONNXRUNTIME_ROOT=$RUNNER_TEMP/ort" >> "$GITHUB_ENV"
 
       - name: Build and load smoke
-        run: bash tests/build-smoke.sh
+        run: bash tests/build-smoke.sh "$RUNNER_TEMP/ort"
 
       - name: Native sanitizers
         if: runner.os == 'Linux'

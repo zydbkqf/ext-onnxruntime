@@ -2,7 +2,7 @@
 
 A native PHP extension that loads ONNX models and runs inference directly from PHP, using the Zend C API, C++, and the ONNX Runtime native library. It does not use FFI or Python.
 
-Current status: **Phase 5A (runtime configuration) is complete; Phase 5B (execution-provider integration) is in progress; Phase 6 (native async inference) is verified on macOS and Linux x86_64 (NTS and ZTS); Phase 7A (CPU I/O Binding), Phase 7B (fixed-shape preallocated output), Phase 7C/7D (device tensors and explicit device copies) and Phase 7E (explicit multi-group batch inference) are implemented; Phase 7F (async I/O Binding) is implemented and verified on macOS, Windows and Linux x86_64 ZTS.** Phases 1–4 delivered zval -> Tensor conversion, Tensor <-> OrtValue ownership, real synchronous ORT inference, external SDK builds, and packaging. Phase 5A adds `SessionOptions`, `Runtime` version/EP queries, built-in EP append, device enumeration, and CoreML inference. Phase 5B adds the separate device-based Plugin EP path. The Windows CUDA Plugin EP smoke path has passed: register the provider DLL, enumerate the CUDA `EpDevice`, append it with `appendEpDevice()`, and run inference on the NVIDIA GPU. This is a smoke result, not general Plugin EP acceptance across every provider, platform, unload sequence, and failure mode. Phase 6 adds a process-level native worker pool and the `Session::runAsync()` / `OnnxRuntime\Task` API without changing synchronous `run()`. Phase 7A adds `Session::createIoBinding()` / `runWithBinding()` and the `OnnxRuntime\IoBinding` API for CPU I/O Binding; Phase 7B adds fixed-shape `IoBinding::bindOutputBuffer()` with explicit rejection of dynamic outputs. Phase 7E adds `Session::runBatch()` for explicit lists of independent input groups; it does not fuse groups into one ORT execution. Device memory is verified on macOS CPU and Windows CUDA; async I/O binding is verified on macOS CPU and Windows CPU/CUDA, using the same Task engine without claiming vendor-stream-level GPU async completion.
+Current status: synchronous inference, native async tasks, CPU I/O Binding, fixed-shape preallocated outputs, device tensors, explicit device copies, explicit multi-group batch inference, and async I/O Binding are implemented. The current feature set is verified on macOS arm64, Windows x86_64 ZTS, and Linux x86_64 ZTS. Linux x86_64 NTS has only an older synchronous baseline and has **not** been rerun against the current device/I/O-binding/async feature set. The Windows CUDA Plugin EP smoke path has passed: register the provider DLL, enumerate the CUDA `EpDevice`, append it with `appendEpDevice()`, and run inference on the NVIDIA GPU. This is a smoke result, not general Plugin EP acceptance across every provider, platform, unload sequence, and failure mode.
 
 Execution providers have two distinct entry points:
 
@@ -27,15 +27,15 @@ When no EP is appended, ORT defaults are preserved; this project does not promis
 
 | Platform | PHP | Thread mode | Build type | Status |
 | --- | --- | --- | --- | --- |
-| macOS arm64 | 8.5.6 | ZTS | Release | Verified: 34/35 PHPT, 1 Windows-CUDA skip (`033`), ASan, native sync/async stress; Phase 7F |
+| macOS arm64 | 8.5.6 | ZTS | Release | Verified: 34/35 PHPT, 1 Windows-CUDA skip (`033`), ASan, native sync/async stress |
 | macOS arm64 | 8.x | NTS | Debug/Release | Not verified |
-| Linux x86_64 | 8.3.36 | NTS | Release | Phase 6 baseline: 26/27 PHPT, 1 CoreML platform skip; async ASan+LSan passed; Phase 7F not yet rerun |
-| Linux x86_64 | 8.5.12 | ZTS | Release | Verified: 33/35 PHPT, 2 platform skips (CoreML, Windows CUDA); Phase 7F ASan+LSan passed; Swoole 6.2.1 Fiber/coroutine/process/thread, `pcntl_fork`, `parallel` |
+| Linux x86_64 | 8.3.36 | NTS | Release | Synchronous baseline only: 26/27 PHPT, 1 CoreML platform skip; async ASan+LSan passed; current device/I/O-binding/async features not rerun |
+| Linux x86_64 | 8.5.12 | ZTS | Release | Verified: 33/35 PHPT, 2 platform skips (CoreML, Windows CUDA); async ASan+LSan passed; Swoole 6.2.1 Fiber/coroutine/process/thread, `pcntl_fork`, `parallel` |
 | Linux arm64 | 8.x | ZTS/NTS | Debug/Release | Not verified |
 | Linux x86_64 | 8.x | Any | Debug | Not verified |
 | Windows x86_64 | 8.5.12 | ZTS | Release | Verified: 34/35 PHPT, 1 CoreML platform skip; `034`/`035` CPU+CUDA async binding; native I/O Binding stress; CUDA Plugin EP smoke |
 
-The PHP code targets the Zend API in PHP 8.0–8.5 and rejects versions below 8.0 at compile time. Verified environments: macOS arm64 PHP 8.5.6 ZTS; Linux x86_64 PHP 8.3.36 NTS (Phase 6) and PHP 8.5.12 ZTS (Phase 6/7F, Swoole 6.2.1); Windows x86_64 PHP 8.5.12 ZTS with VS 2026 + MSVC 14.44 and ORT 1.28.2, all Release builds. Earlier Phase 5A Linux builds covered PHP 8.0–8.5 NTS. Debug builds, Linux arm64, macOS NTS, Windows NTS, and other unlisted combinations are not claimed as supported. `phpize`/`php-config` determine the ZTS/NTS and Debug/Release configuration; the resulting module must be installed into the extension_dir of the same PHP build and loaded by that same `php` binary.
+The PHP code targets the Zend API in PHP 8.0–8.5 and rejects versions below 8.0 at compile time. Verified environments: macOS arm64 PHP 8.5.6 ZTS; Linux x86_64 PHP 8.3.36 NTS (synchronous baseline) and PHP 8.5.12 ZTS (current feature set, Swoole 6.2.1); Windows x86_64 PHP 8.5.12 ZTS with VS 2026 + MSVC 14.44 and ORT 1.28.2, all Release builds. Earlier Linux builds covered PHP 8.0–8.5 NTS. Debug builds, Linux arm64, macOS NTS, Windows NTS, and other unlisted combinations are not claimed as supported. `phpize`/`php-config` determine the ZTS/NTS and Debug/Release configuration; the resulting module must be installed into the extension_dir of the same PHP build and loaded by that same `php` binary.
 
 ## Requirements
 
@@ -46,7 +46,7 @@ The PHP code targets the Zend API in PHP 8.0–8.5 and rejects versions below 8.
 
 ### Getting ONNX Runtime
 
-Download the official prebuilt package for your platform and use its `include/` and `lib/` directories:
+Download the official prebuilt package for your platform and extract it:
 
 ```text
 onnxruntime-<platform>-1.28.2/
@@ -54,16 +54,15 @@ onnxruntime-<platform>-1.28.2/
   lib/libonnxruntime.*
 ```
 
-Point the build at the extracted SDK:
+The SDK root is passed to `configure`; `include/` and `lib/` are derived from
+that directory. The extension **does not vendor the ONNX Runtime source tree**
+and does not bake a platform-specific prebuilt library into the build scripts.
+The `third_party/onnxruntime` directory in this repository is a local
+development SDK, not a production dependency.
 
-```bash
-export ONNXRUNTIME_INCLUDEDIR=/opt/onnxruntime/include
-export ONNXRUNTIME_LIBDIR=/opt/onnxruntime/lib
-```
-
-You can also set `ONNXRUNTIME_ROOT` to the SDK root (the build derives `include/` and `lib/`). The extension **does not vendor the ONNX Runtime source tree** and does not bake a platform-specific prebuilt library into the build scripts. The `third_party/onnxruntime` directory in this repository is a macOS arm64 development SDK, not a production dependency.
-
-`config.m4` verifies that `onnxruntime_cxx_api.h` and `libonnxruntime.*` exist. If no SDK path is provided, `./configure` fails with instructions instead of silently selecting a bundled library.
+`config.m4` verifies that `onnxruntime_cxx_api.h` and `libonnxruntime.*` exist.
+`--with-onnxruntime` is required; `./configure` fails instead of silently
+selecting a bundled library.
 
 ## Build
 
@@ -71,23 +70,15 @@ Standard external-SDK build:
 
 ```bash
 phpize
-./configure --enable-onnxruntime
+./configure --with-onnxruntime=/opt/onnxruntime-linux-x64-1.28.2
 make -j8
 ```
 
-With explicit ORT paths:
-
-```bash
-ONNXRUNTIME_INCLUDEDIR=/opt/onnxruntime/include \
-ONNXRUNTIME_LIBDIR=/opt/onnxruntime/lib \
-./configure --enable-onnxruntime
-```
-
-For local development on the repository's macOS arm64 SDK (do not use this for release builds):
+For local development against the repository SDK:
 
 ```bash
 phpize
-ONNXRUNTIME_USE_VENDORED=yes ./configure --enable-onnxruntime
+./configure --with-onnxruntime="$PWD/third_party/onnxruntime"
 make -j8
 ```
 
@@ -104,20 +95,24 @@ Prerequisites:
 - Visual Studio C++ toolset and Windows SDK. PHP's Windows build scripts are
   normally validated with the VS 2022 toolchain; a VS 2026-only installation
   must still provide a compatible MSVC/Windows SDK setup.
-- ONNX Runtime **Windows x64** SDK containing `include/onnxruntime_cxx_api.h`
-  and `lib/onnxruntime.lib`
-- `ONNXRUNTIME_ROOT` pointing at the SDK root, or both
-  `ONNXRUNTIME_INCLUDEDIR` and `ONNXRUNTIME_LIBDIR`
+- ONNX Runtime **Windows x64** SDK containing `include\onnxruntime_cxx_api.h`
+  and `lib\onnxruntime.lib`
+
+The Windows SDK root is passed as the same configure option:
+
+```bat
+configure --with-onnxruntime=E:\ort\onnxruntime-win-x64-1.28.2 --with-prefix=D:\php
+```
 
 `config.w32` checks those paths and links only `onnxruntime.lib`. GPU provider
 DLLs (`onnxruntime_providers_cuda.dll`, `onnxruntime_providers_shared.dll`,
 etc.) are runtime dependencies and must be deployed next to the ORT DLL; they
 are not linked into the PHP extension.
 
-Windows Phase 7 verification against PHP 8.5.12 ZTS / ORT 1.28.2:
+Windows verification against PHP 8.5.12 ZTS / ORT 1.28.2:
 34/35 PHPT pass, 1 CoreML platform skip; `034`/`035` exercise both the CPU
 path and, when a CUDA `EpDevice` is available, a CUDA async-binding branch
-(`cuda=pass`, `cuda4=pass`); and the Phase 5B Plugin EP path
+(`cuda=pass`, `cuda4=pass`); the Plugin EP path
 (`registerExecutionProviderLibrary()` -> `getEpDevices()` ->
 `appendEpDevice()`) registers the CUDA provider DLL and runs inference on an
 NVIDIA GPU device. CUDA is a Plugin EP in this ORT build and is not accepted
@@ -132,7 +127,6 @@ its results must be recorded as a separate OS/ORT baseline.
 - macOS/BSD links `-lc++`; Linux links `-lstdc++` by default and switches to `-lc++` when `-stdlib=libc++` is explicitly present.
 - C++17 is required, with `ZEND_ENABLE_STATIC_TSRMLS_CACHE=1`.
 - No ORT rpath is written by default. Set `ONNXRUNTIME_RPATH` before `./configure` when a fixed runtime search path is required; otherwise use `DYLD_LIBRARY_PATH` / `LD_LIBRARY_PATH` as described below.
-- `ONNXRUNTIME_USE_VENDORED=yes` adds a relative rpath only for the macOS development SDK.
 
 ### Install and PHP configuration
 
@@ -176,7 +170,7 @@ export LD_LIBRARY_PATH=/opt/onnxruntime/lib:$LD_LIBRARY_PATH
 Or write an rpath at build time:
 
 ```bash
-ONNXRUNTIME_RPATH=/opt/onnxruntime/lib ./configure --enable-onnxruntime
+ONNXRUNTIME_RPATH=/opt/onnxruntime/lib ./configure --with-onnxruntime=/opt/onnxruntime
 ```
 
 An rpath is a fixed path inside the binary. Release packages must ensure that the target machine uses the same ORT location. For relocatable installs, prefer a system library path or runtime environment variables.
@@ -189,23 +183,22 @@ Build the PECL source package:
 pecl package package.xml
 ```
 
-The output is `onnxruntime-0.4.6.tgz`. `package.xml` contains extension sources, build files, tests, and documentation, but not the `third_party/` development SDK. Builds from that package still need an external ONNX Runtime SDK as described above.
+The output is `onnxruntime-0.4.7.tgz`. `package.xml` contains extension sources, build files, tests, and documentation, but not the `third_party/` development SDK. Builds from that package still need an external ONNX Runtime SDK as described above.
 
 ### PIE (Composer)
 
 `composer.json` declares the package as `type: php-ext` with extension name
-`onnxruntime`, ZTS/NTS support, and the `--enable-onnxruntime` configure option.
+`onnxruntime`, ZTS/NTS support, and the required `--with-onnxruntime=DIR` configure option.
 After the repository is submitted to Packagist, PIE can install it directly:
 
 ```bash
-ONNXRUNTIME_ROOT=/opt/ort pie install zydbkqf/ext-onnxruntime
+pie install zydbkqf/ext-onnxruntime --with-onnxruntime=/opt/ort
 ```
 
-`ONNXRUNTIME_INCLUDEDIR` and `ONNXRUNTIME_LIBDIR` work as well. The ORT SDK is
-not bundled, so a source install needs the same external SDK as a manual
-`phpize` build. The PIE package currently targets Linux and macOS source
-builds. Windows PIE installation is not enabled until a prebuilt DLL ZIP is
-published as a GitHub release asset; use the PECL Windows DLL package for now.
+The ORT SDK is not bundled, so a source install needs the same external SDK as
+a manual `phpize` build. The PIE package currently targets Linux and macOS
+source builds. Windows PIE installation is not enabled until a prebuilt DLL ZIP
+is published as a GitHub release asset; use the PECL Windows DLL package for now.
 
 ### macOS signing
 
@@ -228,13 +221,13 @@ $o = $t->toOrtValue();
 $copy = $o->toTensor();  // deep copy; OrtValue may be destroyed first
 var_dump($copy->toArray());
 
-// Phase 3: synchronous inference
+// synchronous inference
 $s = new OnnxRuntime\Session('/path/to/model.onnx');
 var_dump($s->inputNames(), $s->inputShapes());
 $out = $s->run(['X' => $t]);
 var_dump($out['Y']->toArray());
 
-// Phase 5: runtime configuration and version/EP queries
+// runtime configuration and version/EP queries
 $options = new OnnxRuntime\SessionOptions();
 $options->setIntraOpNumThreads(2);
 $options->setGraphOptimizationLevel('all');
@@ -260,7 +253,7 @@ var_dump($runtime->getEpDevices());
 | `toArray(): mixed` | Rebuild a PHP array from the shape (rank 0 returns a scalar) |
 | `toOrtValue(): OnnxRuntime\OrtValue` | Create an ORT tensor handle; the numeric path borrows the source Tensor buffer, while strings are copied by ORT |
 
-The public Tensor API is `fromArray` / `dtype` / `shape` / `rank` / `toArray` / `toOrtValue`, plus `OrtValue::toTensor`. `dataTypeCode()`, `dataSize()`, `elementCount()`, and `ownership()` were removed after the Phase 1-1 review: the first two are internal debugging aids, and the last two expose implementation details or no longer have meaningful semantics.
+The public Tensor API is `fromArray` / `dtype` / `shape` / `rank` / `toArray` / `toOrtValue`, plus `OrtValue::toTensor`. `dataTypeCode()`, `dataSize()`, `elementCount()`, and `ownership()` were removed after an earlier API review: the first two are internal debugging aids, and the last two expose implementation details or no longer have meaningful semantics.
 
 `dtype` names are case-insensitive and accept the aliases `float` -> `float32` and `double` -> `float64`.
 
@@ -319,7 +312,7 @@ Async inference uses the same input map as `run()`, but inputs are deep-copied i
 | `bindOutputBuffer(string $name, OnnxRuntime\Tensor $buffer): void` | Bind a fixed-shape output to a private preallocated numeric buffer; rejects dynamic shapes, dtype/shape mismatch and string buffers |
 | `getOutputs(): array` | Return copies of the latest run's outputs; throws before the first run |
 
-`OnnxRuntime\IoBinding` is final, cannot be constructed directly, and cannot be cloned. A binding holds `shared_ptr<SessionState>`, so it can outlive the PHP Session object; `getOutputs()` remains valid after the Session is destroyed. One binding is a single-owner mutable object and is not safe to share between PHP threads. Phase 7A does not preallocate output buffers; every run lets ORT allocate fresh CPU outputs, which keeps dynamic output shapes correct but is not zero-copy. Phase 7B adds `bindOutputBuffer()`: the binding keeps a private copy of the buffer template and reuses it across runs. Dynamic outputs are rejected instead of silently reusing a stale shape. `bindOutput()` and `bindOutputBuffer()` are mutually exclusive per output and can be switched before a run. After `runWithBindingAsync()`, the binding is owned by the Task: `bindInput()`, `bindOutput()`, `bindOutputBuffer()`, `runWithBinding()`, and `getOutputs()` are all rejected; create a new binding for another run.
+`OnnxRuntime\IoBinding` is final, cannot be constructed directly, and cannot be cloned. A binding holds `shared_ptr<SessionState>`, so it can outlive the PHP Session object; `getOutputs()` remains valid after the Session is destroyed. One binding is a single-owner mutable object and is not safe to share between PHP threads. A binding does not preallocate output buffers by default; every run lets ORT allocate fresh CPU outputs, which keeps dynamic output shapes correct but is not zero-copy. `bindOutputBuffer()` keeps a private copy of the buffer template and reuses it across runs. Dynamic outputs are rejected instead of silently reusing a stale shape. `bindOutput()` and `bindOutputBuffer()` are mutually exclusive per output and can be switched before a run. After `runWithBindingAsync()`, the binding is owned by the Task: `bindInput()`, `bindOutput()`, `bindOutputBuffer()`, `runWithBinding()`, and `getOutputs()` are all rejected; create a new binding for another run.
 
 ### Task
 
@@ -334,7 +327,7 @@ Async inference uses the same input map as `run()`, but inputs are deep-copied i
 | `getError(): ?Throwable` | Return the native failure object, or `null` when the task did not fail |
 | `cancel(): bool` | Cancel only a `queued` task; a running ORT call is not interrupted |
 
-Use `runAsync()` / `runWithBindingAsync()` only when the PHP process can wait for or poll the Task. In FPM this still occupies the worker while `wait()` blocks; the native pool does not create a PHP scheduler or Fiber adapter in Phase 6. A binding Task keeps the binding and all bound input/output buffers alive until the Task is destroyed. ORT `SynchronizeInputs()` runs before `Run()` and `SynchronizeOutputs()` runs before output copying; Task completion therefore means the bound transfer path has completed, not that a vendor stream was exposed as an independent async object.
+Use `runAsync()` / `runWithBindingAsync()` only when the PHP process can wait for or poll the Task. In FPM this still occupies the worker while `wait()` blocks; the native pool does not create a PHP scheduler or Fiber adapter. A binding Task keeps the binding and all bound input/output buffers alive until the Task is destroyed. ORT `SynchronizeInputs()` runs before `Run()` and `SynchronizeOutputs()` runs before output copying; Task completion therefore means the bound transfer path has completed, not that a vendor stream was exposed as an independent async object.
 
 ### SessionOptions
 
@@ -411,7 +404,7 @@ Explicit dtype rules:
 | Model path, corrupt model, ORT load or run error | `OnnxRuntime\Exception` (from `Ort::Session` / `Run`) |
 | Input/output dtype, rank, or static shape mismatch | `OnnxRuntime\ConversionException` (checked before entering ORT) |
 
-Phases 2/3 map real ORT runtime errors. `ConversionException` means PHP-side input or conversion failed; `Exception` means ORT rejected the operation.
+The extension maps real ORT runtime errors. `ConversionException` means PHP-side input or conversion failed; `Exception` means ORT rejected the operation.
 
 ### Conversion constraints
 
@@ -439,7 +432,7 @@ Full PHPT suite:
 NO_INTERACTION=1 make test
 ```
 
-macOS: 34/35 passed (Phase 7F included), 1 Windows-CUDA skip (`033`). Windows PHP 8.5.12 ZTS: 34/35 passed, 1 CoreML skip (`025`), including `034`/`035` on both CPU and CUDA. Linux x86_64 PHP 8.5.12 ZTS (Docker `php:8.5-zts`, PHP 8.5.12): 33/35 passed, 2 platform skips (CoreML `025`, Windows CUDA `033`), including Phase 7F `034`/`035`; `tests/run-async-sanitizers.sh` passed with ASan+LSan and `native-async-stress-ok`. Phase 7A/7B CPU I/O Binding ASan+LSan also passed; Fiber, 8 coroutines, Swoole process, 4 Swoole threads, `pcntl_fork`, and 4 `parallel` runtimes passed. The CoreML test is skipped by platform. Phase 7A/7B also has a native ASan stress gate:
+macOS: 34/35 passed, 1 Windows-CUDA skip (`033`). Windows PHP 8.5.12 ZTS: 34/35 passed, 1 CoreML skip (`025`), including `034`/`035` on both CPU and CUDA. Linux x86_64 PHP 8.5.12 ZTS (Docker `php:8.5-zts`): 33/35 passed, 2 platform skips (CoreML `025`, Windows CUDA `033`), including `034`/`035`; `tests/run-async-sanitizers.sh` passed with ASan+LSan and `native-async-stress-ok`. CPU I/O Binding ASan+LSan also passed; Fiber, 8 coroutines, Swoole process, 4 Swoole threads, `pcntl_fork`, and 4 `parallel` runtimes passed. Linux x86_64 NTS has not been rerun against the current device/I/O-binding/async tests; its last recorded result is the earlier 26/27 synchronous baseline. CPU I/O Binding has a native ASan stress gate:
 
 ```bash
 bash tests/run-io-binding-sanitizers.sh
@@ -447,15 +440,16 @@ bash tests/run-io-binding-sanitizers.sh
 
 It exercises 150 identity runs with a preallocated output buffer, 30 dynamic-shape runs, input copies, output ownership and binding lifetime past SessionState destruction; macOS reports `native-io-binding-stress-ok` under ASan (LSan unavailable on Darwin). Coverage includes 1D/2D/3D conversion, empty arrays, empty inner dimensions, scalars and rank 0, mixed numeric types, bool/string, explicit dtype, overflow and precision, associative/sparse arrays, ragged arrays, nested scalars, recursion depth, empty/zero-dimensional tensors, int64/int32/int16/int8/uint8 boundaries, float32/float64 precision loss and overflow, large arrays (500x500), object API/clone/constructor protection, OrtValue round trips for every dtype, strings/NUL/empty strings, lifetime after the source Tensor is destroyed, Session metadata/dynamic dimensions, single and multi-input/output inference, model paths and corrupt models, missing/unknown/wrong dtype or shape inputs, repeated inference, outputs remaining valid after Session destruction, zero-element Tensor (`[0]` / `[2,0]`) inference, explicit rejection of non-Tensor and unsupported dtypes, input dtype/rank/static-shape contracts, `run()` reflection parameter count, `SessionOptions` defaults/setters/invalid values/clone/snapshot behavior, `Runtime` version and Provider/EP device queries, built-in `appendExecutionProvider` configuration, CoreML inference, `EpDevice` immutability, the V2 device append path validated with an ORT-provided built-in CPU device, native async Task submission/result/lifetime, CPU I/O Binding input/output binding, repeated runs, dynamic output shapes, zero-element output, binding/session mismatch, binding lifetime after Session destruction, and fixed-shape preallocated output with explicit dynamic-output rejection, and explicit multi-group batch inference with per-entry error context.
 
-Phase 4 compile/load/basic Tensor/inference smoke:
+Compile/load/basic Tensor/inference smoke:
 
 ```bash
-ONNXRUNTIME_INCLUDEDIR=/opt/onnxruntime/include \
-ONNXRUNTIME_LIBDIR=/opt/onnxruntime/lib \
-bash tests/build-smoke.sh
+bash tests/build-smoke.sh /opt/onnxruntime-linux-x64-1.28.2
 ```
 
-The script runs `phpize --clean`, `phpize`, `configure`, `make`, module loading, `Tensor::fromArray()`, `identity.onnx` inference, and the full PHPT suite. macOS adds an ad-hoc signature automatically. Without an external SDK, add `ONNXRUNTIME_USE_VENDORED=yes` to use the repository development SDK.
+Pass the extracted ONNX Runtime SDK root. For the repository development SDK
+use `bash tests/build-smoke.sh "$PWD/third_party/onnxruntime"`.
+
+The script runs `phpize --clean`, `phpize`, `configure --with-onnxruntime=DIR`, `make`, module loading, `Tensor::fromArray()`, `identity.onnx` inference, and the full PHPT suite. macOS adds an ad-hoc signature automatically.
 
 Native memory gate:
 
@@ -464,9 +458,18 @@ bash tests/run-sanitizers.sh          # native Tensor ASan; Linux also enables L
 bash tests/run-async-sanitizers.sh    # native AsyncEngine ASan/LSan (macOS + Linux verified)
 ```
 
-macOS supports ASan only (LSan is unavailable); the leak gate lives on Linux ASan+LSan/Valgrind. The Linux x86_64 PHP 8.5.12 ZTS container has been verified on Phase 6 code with `native-async-stress-ok` and LSan enabled. The `008` `memory_get_usage()` check reflects only the Zend/PHP heap and cannot replace a native sanitizer. `tests/native_stress.cpp` also covers `elementCount()` for zero dimensions, scalars, negative dimensions, and multiplication overflow. ASan extension build and `tests/stress/asan-stress.php` instructions are in `PHASE1.md` sections 4.3 and 10.
+macOS supports ASan only (LSan is unavailable); the leak gate lives on Linux ASan+LSan/Valgrind. The Linux x86_64 PHP 8.5.12 ZTS container has been verified with `native-async-stress-ok` and LSan enabled. The `008` `memory_get_usage()` check reflects only the Zend/PHP heap and cannot replace a native sanitizer. `tests/native_stress.cpp` also covers `elementCount()` for zero dimensions, scalars, negative dimensions, and multiplication overflow.
 
 The GitHub Actions workflow is `.github/workflows/ci.yml`; it downloads the ORT SDK for Linux/macOS and calls the same smoke script. The workflow has not actually run on GitHub Actions yet, so it must not be used to claim that the full Linux/macOS matrix is supported.
+
+## Benchmark
+
+`benchmarks/fastembed_int8_bpe.py` compares FastEmbed against the PHP extension
+on `Qdrant/bge-small-en-v1.5-onnx-Q` (BGE-small, int8 ONNX, BPE tokenizer).
+It reports FastEmbed end-to-end, FastEmbed tokenizer + ORT, and PHP ORT-only
+latency separately; the PHP extension has no BPE tokenizer, so PHP numbers are
+inference-only. See `benchmarks/README.md` for the exact workload and current
+CPU/CoreML results.
 
 ## Directory Layout
 
@@ -494,11 +497,12 @@ tests/
   run-io-binding-sanitizers.sh # Native I/O Binding ASan/LSan
   *.phpt                   # 35 PHPT tests
   fixtures/                # Local ONNX models
+benchmarks/
+  fastembed_int8_bpe.py    # FastEmbed vs raw ORT vs PHP ORT
+  php_ort_bench.php        # PHP-side timing with pre-tokenized inputs
 third_party/onnxruntime/   # macOS arm64 development SDK only (not a production dependency)
-docs/                      # phase reports (Markdown) and design documents (DOCX)
+docs/                      # design documents (DOCX)
 ```
-
-Phase reports: [PHASE1.md](docs/PHASE1.md) / [PHASE2.md](docs/PHASE2.md) / [PHASE3.md](docs/PHASE3.md) / [PHASE4.md](docs/PHASE4.md) / [PHASE5.md](docs/PHASE5.md) / [PHASE6.md](docs/PHASE6.md) / [PHASE7.md](docs/PHASE7.md).
 
 Stable baseline: [BASELINE.md](docs/BASELINE.md).
 

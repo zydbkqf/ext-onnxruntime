@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
 # Build, load, and smoke-test the extension against an ONNX Runtime SDK.
 #
-# External SDK:
-#   ONNXRUNTIME_INCLUDEDIR=/opt/ort/include \
-#   ONNXRUNTIME_LIBDIR=/opt/ort/lib bash tests/build-smoke.sh
+# Usage:
+#   bash tests/build-smoke.sh /opt/onnxruntime-linux-x64-1.28.2
 #
-# Repository development SDK (macOS arm64 only):
-#   ONNXRUNTIME_USE_VENDORED=yes bash tests/build-smoke.sh
+# The directory must be the extracted ONNX Runtime prebuilt package root
+# containing include/ and lib/. ONNXRUNTIME_ROOT is accepted as a fallback.
 
 set -euo pipefail
 
@@ -14,13 +13,11 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PHP_BIN="${PHP_BIN:-php}"
 JOBS="${JOBS:-8}"
 MODULE="$ROOT/modules/onnxruntime.so"
+ORT_ROOT="${1:-${ONNXRUNTIME_ROOT:-}}"
 
-if [[ -z "${ONNXRUNTIME_INCLUDEDIR:-}" &&
-      -z "${ONNXRUNTIME_LIBDIR:-}" &&
-      -z "${ONNXRUNTIME_ROOT:-}" &&
-      "${ONNXRUNTIME_USE_VENDORED:-no}" != "yes" ]]; then
-    echo "build-smoke: set ONNXRUNTIME_INCLUDEDIR/ONNXRUNTIME_LIBDIR (or ONNXRUNTIME_ROOT)" >&2
-    echo "build-smoke: or pass ONNXRUNTIME_USE_VENDORED=yes for the repository development SDK" >&2
+if [[ -z "$ORT_ROOT" ]]; then
+    echo "build-smoke: pass the ONNX Runtime SDK root, e.g. bash tests/build-smoke.sh /opt/onnxruntime-linux-x64-1.28.2" >&2
+    echo "build-smoke: or set ONNXRUNTIME_ROOT" >&2
     exit 2
 fi
 
@@ -28,7 +25,7 @@ cd "$ROOT"
 
 phpize --clean
 phpize
-./configure --enable-onnxruntime
+./configure --with-onnxruntime="$ORT_ROOT"
 make -j"$JOBS"
 
 if [[ "$(uname -s)" == "Darwin" ]]; then
@@ -37,10 +34,8 @@ fi
 
 # Let a locally downloaded ORT SDK satisfy the runtime loader even when no
 # rpath was embedded at configure time.
-if [[ -n "${ONNXRUNTIME_LIBDIR:-}" ]]; then
-    export DYLD_LIBRARY_PATH="${ONNXRUNTIME_LIBDIR}${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}"
-    export LD_LIBRARY_PATH="${ONNXRUNTIME_LIBDIR}${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-fi
+export DYLD_LIBRARY_PATH="$ORT_ROOT/lib${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}"
+export LD_LIBRARY_PATH="$ORT_ROOT/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
 "$PHP_BIN" -n -d "extension=$MODULE" --ri onnxruntime >/dev/null
 BUILD_SMOKE_FIXTURE="$ROOT/tests/fixtures/identity.onnx" \

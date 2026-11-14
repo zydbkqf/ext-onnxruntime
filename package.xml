@@ -6,8 +6,8 @@
  xsi:schemaLocation="http://pear.php.net/dtd/tasks-1.0 http://pear.php.net/dtd/tasks-1.0.xsd http://pear.php.net/dtd/package-2.0 http://pear.php.net/dtd/package-2.0.xsd">
  <name>onnxruntime</name>
  <channel>pecl.php.net</channel>
- <summary>PHP bindings for ONNX Runtime synchronous inference</summary>
- <description>Zend C++ extension for loading ONNX models and running synchronous inference without FFI or Python.</description>
+ <summary>PHP bindings for ONNX Runtime synchronous and asynchronous inference</summary>
+ <description>Zend C++ extension for loading ONNX models and running synchronous and asynchronous inference without FFI or Python.</description>
  <lead>
   <name>Denis Cheung</name>
   <user>denischeung</user>
@@ -16,7 +16,7 @@
  </lead>
  <date>2026-11-14</date>
  <version>
-  <release>0.4.6</release>
+  <release>0.4.7</release>
   <api>0.4.0</api>
  </version>
  <stability>
@@ -24,7 +24,7 @@
   <api>beta</api>
  </stability>
  <license uri="https://opensource.org/licenses/MIT">MIT</license>
- <notes>Phase 7C/7D device tensors and explicit device copies, plus Phase 7F async I/O Binding on the native Task engine. Includes Phase 7A CPU I/O Binding, Phase 7B fixed-shape preallocated output and Phase 7E explicit batch inference. 0.4.6 hardens DeviceTensor/Plugin EP lifetime ordering, releases queue capacity on cancelled tasks, and makes Task timeout conversion and worker-pool construction overflow/exception safe.</notes>
+ <notes>Build with a required --with-onnxruntime=DIR pointing at the extracted ONNX Runtime prebuilt package. Includes synchronous and asynchronous inference, CPU I/O Binding, fixed-shape preallocated output, device tensors, explicit device copies, explicit batch inference and async I/O Binding. Also hardens DeviceTensor/Plugin EP lifetime ordering, releases queue capacity on cancelled tasks, and makes Task timeout conversion and worker-pool construction overflow/exception safe.</notes>
  <contents>
   <dir name="/">
    <file name="config.m4" role="src"/>
@@ -33,6 +33,9 @@
    <file name="composer.json" role="doc"/>
    <file name="LICENSE" role="doc"/>
    <file name="NOTICE" role="doc"/>
+   <file name="benchmarks/README.md" role="doc"/>
+   <file name="benchmarks/fastembed_int8_bpe.py" role="test"/>
+   <file name="benchmarks/php_ort_bench.php" role="test"/>
    <file name="docs/PHASE1.md" role="doc"/>
    <file name="docs/PHASE2.md" role="doc"/>
    <file name="docs/PHASE3.md" role="doc"/>
