@@ -245,6 +245,21 @@ void releasePluginSessions(const std::vector<std::string> &registrations) {
     }
 }
 
+PluginLease::~PluginLease() {
+    releasePluginSessions(registrations_);
+}
+
+void PluginLease::acquire(const std::vector<EpDeviceInfo> &devices) {
+    if (!registrations_.empty()) {
+        throw ConversionError(
+            "PluginLease is already acquired; one lease owns one reservation");
+    }
+    std::vector<std::string> acquired = acquirePluginSessions(devices);
+    // swap is noexcept, so a failure above cannot leave counted registrations
+    // stranded in a temporary vector.
+    registrations_.swap(acquired);
+}
+
 void shutdownRuntime() {
     // Stop phase: no new Sessions or plugin registrations may start.
     g_shutting_down.store(true, std::memory_order_release);
