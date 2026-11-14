@@ -2,7 +2,7 @@
 
 A native PHP extension that loads ONNX models and runs inference directly from PHP, using the Zend C API, C++, and the ONNX Runtime native library. It does not use FFI or Python.
 
-Current status: synchronous inference, native async tasks, CPU I/O Binding, fixed-shape preallocated outputs, device tensors, explicit device copies, explicit multi-group batch inference, and async I/O Binding are implemented. The current feature set is verified on macOS arm64, Windows x86_64 ZTS, and Linux x86_64 ZTS. Linux x86_64 NTS has only an older synchronous baseline and has **not** been rerun against the current device/I/O-binding/async feature set. The Windows CUDA Plugin EP smoke path has passed: register the provider DLL, enumerate the CUDA `EpDevice`, append it with `appendEpDevice()`, and run inference on the NVIDIA GPU. This is a smoke result, not general Plugin EP acceptance across every provider, platform, unload sequence, and failure mode.
+Current status: synchronous inference, native async tasks, CPU I/O Binding, fixed-shape preallocated outputs, device tensors, explicit device copies, explicit multi-group batch inference, and async I/O Binding are implemented. The current feature set is verified on macOS arm64, Windows x86_64 ZTS, Linux x86_64 ZTS, and Linux x86_64 NTS (33/35 PHPT, with CoreML and Windows-CUDA platform skips). The Windows CUDA Plugin EP smoke path has passed: register the provider DLL, enumerate the CUDA `EpDevice`, append it with `appendEpDevice()`, and run inference on the NVIDIA GPU. This is a smoke result, not general Plugin EP acceptance across every provider, platform, unload sequence, and failure mode.
 
 Execution providers have two distinct entry points:
 
@@ -29,13 +29,13 @@ When no EP is appended, ORT defaults are preserved; this project does not promis
 | --- | --- | --- | --- | --- |
 | macOS arm64 | 8.5.6 | ZTS | Release | Verified: 34/35 PHPT, 1 Windows-CUDA skip (`033`), ASan, native sync/async stress |
 | macOS arm64 | 8.x | NTS | Debug/Release | Not verified |
-| Linux x86_64 | 8.3.36 | NTS | Release | Synchronous baseline only: 26/27 PHPT, 1 CoreML platform skip; async ASan+LSan passed; current device/I/O-binding/async features not rerun |
+| Linux x86_64 | 8.5.12 | NTS | Release | Verified: 33/35 PHPT, 2 platform skips (CoreML, Windows CUDA); new `--with-onnxruntime=DIR` build path |
 | Linux x86_64 | 8.5.12 | ZTS | Release | Verified: 33/35 PHPT, 2 platform skips (CoreML, Windows CUDA); async ASan+LSan passed; Swoole 6.2.1 Fiber/coroutine/process/thread, `pcntl_fork`, `parallel` |
 | Linux arm64 | 8.x | ZTS/NTS | Debug/Release | Not verified |
 | Linux x86_64 | 8.x | Any | Debug | Not verified |
 | Windows x86_64 | 8.5.12 | ZTS | Release | Verified: 34/35 PHPT, 1 CoreML platform skip; `034`/`035` CPU+CUDA async binding; native I/O Binding stress; CUDA Plugin EP smoke |
 
-The PHP code targets the Zend API in PHP 8.0–8.5 and rejects versions below 8.0 at compile time. Verified environments: macOS arm64 PHP 8.5.6 ZTS; Linux x86_64 PHP 8.3.36 NTS (synchronous baseline) and PHP 8.5.12 ZTS (current feature set, Swoole 6.2.1); Windows x86_64 PHP 8.5.12 ZTS with VS 2026 + MSVC 14.44 and ORT 1.28.2, all Release builds. Earlier Linux builds covered PHP 8.0–8.5 NTS. Debug builds, Linux arm64, macOS NTS, Windows NTS, and other unlisted combinations are not claimed as supported. `phpize`/`php-config` determine the ZTS/NTS and Debug/Release configuration; the resulting module must be installed into the extension_dir of the same PHP build and loaded by that same `php` binary.
+The PHP code targets the Zend API in PHP 8.0–8.5 and rejects versions below 8.0 at compile time. Verified environments: macOS arm64 PHP 8.5.6 ZTS; Linux x86_64 PHP 8.5.12 NTS and ZTS (current feature set, Swoole 6.2.1 on ZTS); Windows x86_64 PHP 8.5.12 ZTS with VS 2026 + MSVC 14.44 and ORT 1.28.2, all Release builds. Debug builds, Linux arm64, macOS NTS, Windows NTS, and other unlisted combinations are not claimed as supported. `phpize`/`php-config` determine the ZTS/NTS and Debug/Release configuration; the resulting module must be installed into the extension_dir of the same PHP build and loaded by that same `php` binary.
 
 ## Requirements
 
@@ -432,7 +432,7 @@ Full PHPT suite:
 NO_INTERACTION=1 make test
 ```
 
-macOS: 34/35 passed, 1 Windows-CUDA skip (`033`). Windows PHP 8.5.12 ZTS: 34/35 passed, 1 CoreML skip (`025`), including `034`/`035` on both CPU and CUDA. Linux x86_64 PHP 8.5.12 ZTS (Docker `php:8.5-zts`): 33/35 passed, 2 platform skips (CoreML `025`, Windows CUDA `033`), including `034`/`035`; `tests/run-async-sanitizers.sh` passed with ASan+LSan and `native-async-stress-ok`. CPU I/O Binding ASan+LSan also passed; Fiber, 8 coroutines, Swoole process, 4 Swoole threads, `pcntl_fork`, and 4 `parallel` runtimes passed. Linux x86_64 NTS has not been rerun against the current device/I/O-binding/async tests; its last recorded result is the earlier 26/27 synchronous baseline. CPU I/O Binding has a native ASan stress gate:
+macOS: 34/35 passed, 1 Windows-CUDA skip (`033`). Windows PHP 8.5.12 ZTS: 34/35 passed, 1 CoreML skip (`025`), including `034`/`035` on both CPU and CUDA. Linux x86_64 PHP 8.5.12 ZTS (Docker `php:8.5-zts`): 33/35 passed, 2 platform skips (CoreML `025`, Windows CUDA `033`), including `034`/`035`; `tests/run-async-sanitizers.sh` passed with ASan+LSan and `native-async-stress-ok`. Linux x86_64 PHP 8.5.12 NTS (Docker `php:8.5-cli`): 33/35 passed, the same 2 platform skips, built with `--with-onnxruntime=/opt/ort`. CPU I/O Binding ASan+LSan also passed; Fiber, 8 coroutines, Swoole process, 4 Swoole threads, `pcntl_fork`, and 4 `parallel` runtimes passed. CPU I/O Binding has a native ASan stress gate:
 
 ```bash
 bash tests/run-io-binding-sanitizers.sh
