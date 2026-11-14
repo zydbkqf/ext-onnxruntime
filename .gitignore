@@ -40,6 +40,19 @@
 # Packaged release artifact
 /onnxruntime-*.tgz
 
+# Windows phpize / php-sdk generated files
+/x64/
+/configure.bat
+/config.nice.bat
+/configure.js
+/*.obj
+/*.pdb
+/*.ilk
+/*.exp
+/*.lib
+/tests/[0-9][0-9][0-9]-*.php
+/tests/[0-9][0-9][0-9]-*.sh
+
 # Local tooling and coverage
 .idea/
 .vscode/

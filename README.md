@@ -33,9 +33,9 @@ When no EP is appended, ORT defaults are preserved; this project does not promis
 | Linux x86_64 | 8.5.12 | ZTS | Release | 29/30 PHPT (Phase 7B), 1 CoreML platform skip; Swoole 6.2.1 Fiber/coroutine/process/thread, `pcntl_fork`, `parallel`; async ASan+LSan passed; CPU I/O Binding ASan+LSan passed |
 | Linux arm64 | 8.x | ZTS/NTS | Debug/Release | Not verified |
 | Linux x86_64 | 8.x | Any | Debug | Not verified |
-| Windows | Any | Any | Any | Not supported; possible future target |
+| Windows x86_64 | 8.5.12 | ZTS | Release | Verified: 30/31 PHPT, 1 CoreML platform skip; native I/O Binding stress; CUDA Plugin EP device smoke |
 
-The PHP code targets the Zend API in PHP 8.0–8.5 and rejects versions below 8.0 at compile time. Verified environments: macOS arm64 PHP 8.5.6 ZTS; Linux x86_64 PHP 8.3.36 NTS (Phase 6) and PHP 8.5.12 ZTS (Phase 6, Swoole 6.2.1), all Release builds. Earlier Phase 5A Linux builds covered PHP 8.0–8.5 NTS. Debug builds, Linux arm64, macOS NTS, Windows, and other unlisted combinations are not claimed as supported. `phpize`/`php-config` determine the ZTS/NTS and Debug/Release configuration; the resulting module must be installed into the extension_dir of the same PHP build and loaded by that same `php` binary.
+The PHP code targets the Zend API in PHP 8.0–8.5 and rejects versions below 8.0 at compile time. Verified environments: macOS arm64 PHP 8.5.6 ZTS; Linux x86_64 PHP 8.3.36 NTS (Phase 6) and PHP 8.5.12 ZTS (Phase 6, Swoole 6.2.1), all Release builds; Windows x86_64 PHP 8.5.12 ZTS with VS 2026 + MSVC 14.44 (v143) and ORT 1.28.2. Earlier Phase 5A Linux builds covered PHP 8.0–8.5 NTS. Debug builds, Linux arm64, macOS NTS, Windows NTS, and other unlisted combinations are not claimed as supported. `phpize`/`php-config` determine the ZTS/NTS and Debug/Release configuration; the resulting module must be installed into the extension_dir of the same PHP build and loaded by that same `php` binary.
 
 ## Requirements
 
@@ -109,10 +109,33 @@ Prerequisites:
 - `ONNXRUNTIME_ROOT` pointing at the SDK root, or both
   `ONNXRUNTIME_INCLUDEDIR` and `ONNXRUNTIME_LIBDIR`
 
+With VS 2022, use `phpsdk-vs17-x64.bat`. With a VS 2026-only installation,
+`phpsdk-vs17` cannot find VS 18, so use the VS 18 starter and force the v143
+toolset to keep PHP's VS17 ABI:
+
+```bat
+phpsdk-starter.bat -c vs18 -a x64 -s 14.44 -t build-onnxruntime.bat
+```
+
+`build-onnxruntime.bat` must set `ONNXRUNTIME_ROOT`, run `phpize`, then
+`configure --enable-onnxruntime --with-prefix=<php-root>`, then `nmake`.
+php-sdk 2.9.1-dev currently emits `/Fo$(BUILD_DIR)\` while its link response
+file expects `$(BUILD_DIR)\src\`; if link fails with `LNK1181` for
+`src\*.obj`, create `$(BUILD_DIR)\src` and rewrite `/Fo$(BUILD_DIR)\` to
+`/Fo$(BUILD_DIR)\src\` in the generated `Makefile` before `nmake`.
+
 `config.w32` checks those paths and links only `onnxruntime.lib`. GPU provider
 DLLs (`onnxruntime_providers_cuda.dll`, `onnxruntime_providers_shared.dll`,
 etc.) are runtime dependencies and must be deployed next to the ORT DLL; they
 are not linked into the PHP extension.
+
+Windows Phase 7 verification against PHP 8.5.12 ZTS / ORT 1.28.2:
+30/31 PHPT pass, 1 CoreML platform skip; `native_io_binding_stress.cpp`
+prints `native-io-binding-stress-ok`; and the Phase 5B Plugin EP path
+(`registerExecutionProviderLibrary()` -> `getEpDevices()` ->
+`appendEpDevice()`) registers the CUDA provider DLL and runs inference on an
+NVIDIA GPU device. CUDA is a Plugin EP in this ORT build and is not accepted
+by `appendExecutionProvider('CUDA')`.
 
 The repository's verified ORT baseline is **1.28.2**. ORT 1.32 can be used for
 Windows GPU experiments, but its provider/CUDA/cuDNN requirements differ and

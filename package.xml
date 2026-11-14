@@ -24,7 +24,7 @@
   <api>beta</api>
  </stability>
  <license uri="https://opensource.org/licenses/MIT">MIT</license>
- <notes>Phase 7E with Windows native build support via config.w32. Includes Phase 7A CPU I/O Binding and Phase 7B fixed-shape preallocated output.</notes>
+ <notes>Phase 7E with verified Windows native build support via config.w32, including the CUDA Plugin EP device path. Includes Phase 7A CPU I/O Binding and Phase 7B fixed-shape preallocated output.</notes>
  <contents>
   <dir name="/">
    <file name="config.m4" role="src"/>
@@ -60,6 +60,7 @@
    <file name="src/runtime.cpp" role="src"/>
    <file name="src/runtime.h" role="src"/>
    <file name="src/session.h" role="src"/>
+   <file name="src/win_utils.h" role="src"/>
    <file name="src/zval_converter.cpp" role="src"/>
    <file name="src/zval_converter.h" role="src"/>
    <file name="tests/001-basic-conversion.phpt" role="test"/>

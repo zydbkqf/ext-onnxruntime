@@ -47,7 +47,7 @@ if (PHP_ONNXRUNTIME != "no") {
 		"src/async_engine.cpp src/io_binding.cpp",
 		PHP_ONNXRUNTIME_SHARED,
 		"/std:c++17 /EHsc /I \"" + ort_include + "\" " +
-		"/DZEND_ENABLE_STATIC_TSRMLS_CACHE=1");
+		"/DNOMINMAX /DZEND_ENABLE_STATIC_TSRMLS_CACHE=1");
 
 	AC_DEFINE("HAVE_ONNXRUNTIME", 1,
 		"Define to 1 if the ONNX Runtime extension is available.");

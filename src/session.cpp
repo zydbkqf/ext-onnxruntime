@@ -8,6 +8,7 @@
 #include "ort_environment.h"
 #include "ort_value_converter.h"
 #include "runtime.h"
+#include "win_utils.h"
 
 namespace php_ort {
 namespace {
@@ -174,7 +175,11 @@ SessionState::SessionState(const std::string &model_path,
     if (config != nullptr) {
         config->applyTo(options, *env);
     }
+#ifdef _WIN32
+    session = Ort::Session(*env, toWidePath(model_path).c_str(), options);
+#else
     session = Ort::Session(*env, model_path.c_str(), options);
+#endif
     Ort::AllocatorWithDefaultOptions allocator;
     inputs_ = readAllInfos(session, true, allocator);
     outputs_ = readAllInfos(session, false, allocator);

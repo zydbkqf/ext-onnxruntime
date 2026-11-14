@@ -10,6 +10,7 @@
 
 #include "onnx_tensor.h"
 #include "ort_environment.h"
+#include "win_utils.h"
 
 namespace php_ort {
 namespace {
@@ -29,14 +30,10 @@ std::unordered_map<std::string, std::string> g_device_owners;
 std::atomic<bool> g_shutting_down{false};
 uint64_t g_next_generation = 1;
 
-std::set<std::string> currentDeviceKeys(Ort::Env &env) {
+std::set<std::string> currentDeviceIdentities(Ort::Env &env) {
     std::set<std::string> keys;
     for (EpDeviceInfo device : readEpDevices(env)) {
-        auto owner = g_device_owners.find(device.identityKey());
-        if (owner != g_device_owners.end()) {
-            device.registration_name = owner->second;
-        }
-        keys.insert(device.key());
+        keys.insert(device.identityKey());
     }
     return keys;
 }
@@ -75,24 +72,30 @@ void registerExecutionProviderLibrary(const std::string &registration_name,
     }
 
     auto env = environment();
-    const std::set<std::string> before = currentDeviceKeys(*env);
+    const std::set<std::string> before = currentDeviceIdentities(*env);
 
+#ifdef _WIN32
+    env->RegisterExecutionProviderLibrary(registration_name.c_str(),
+                                          toWidePath(library_path).c_str());
+#else
     env->RegisterExecutionProviderLibrary(registration_name.c_str(),
                                           library_path.c_str());
+#endif
 
     PluginRegistration registration;
     registration.path = library_path;
     registration.generation = g_next_generation++;
     try {
         for (const EpDeviceInfo &raw_device : readEpDevices(*env)) {
+            if (before.find(raw_device.identityKey()) != before.end()) {
+                continue;
+            }
             EpDeviceInfo device = raw_device;
             device.registration_name = registration_name;
             device.registration_generation = registration.generation;
             const std::string key = device.key();
-            if (before.find(key) == before.end()) {
-                registration.device_keys.insert(key);
-                g_device_owners[device.identityKey()] = registration_name;
-            }
+            registration.device_keys.insert(key);
+            g_device_owners[device.identityKey()] = registration_name;
         }
     } catch (...) {
         // Registration itself succeeded but device bookkeeping failed.  Do

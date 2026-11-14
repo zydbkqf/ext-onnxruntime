@@ -3,6 +3,7 @@ SessionOptions appends the CoreML execution provider and runs a model
 --SKIPIF--
 <?php
 if (!extension_loaded('onnxruntime')) die('skip onnxruntime not loaded');
+if (PHP_OS_FAMILY !== 'Darwin') die('skip CoreML is macOS-only');
 $r = OnnxRuntime\Runtime::default();
 if (!in_array('CoreMLExecutionProvider', $r->getAvailableProviders(), true)) {
     die('skip CoreML execution provider unavailable');
