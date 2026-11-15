@@ -10,15 +10,14 @@ on:
         required: true
         type: string
 
-env:
-  RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
-
 permissions:
   contents: write
 
 jobs:
   matrix:
     runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ github.event.release.tag_name || github.event.inputs.tag }}
     outputs:
       matrix: ${{ steps.extension-matrix.outputs.matrix }}
     steps:
@@ -36,6 +35,8 @@ jobs:
   build:
     needs: matrix
     runs-on: ${{ matrix.os }}
+    env:
+      RELEASE_TAG: ${{ github.event.release.tag_name || github.event.inputs.tag }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.matrix.outputs.matrix) }}
@@ -63,6 +64,8 @@ jobs:
   release:
     needs: build
     runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ github.event.release.tag_name || github.event.inputs.tag }}
     steps:
       - uses: actions/download-artifact@v5
         with:
