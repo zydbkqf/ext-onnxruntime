@@ -58,6 +58,7 @@ jobs:
           php-version: ${{ matrix.php-version }}
           arch: ${{ matrix.arch }}
           ts: ${{ matrix.ts }}
+          extension-ref: ${{ env.RELEASE_TAG }}
           args: --with-onnxruntime=${{ github.workspace }}\ort\onnxruntime-win-x64-1.28.2
           run-tests: false
 
@@ -101,11 +102,30 @@ jobs:
             }
           }
 
+      - name: Remove stale main-named PIE assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          names=$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name' | grep '^php_onnxruntime-main-' || true)
+          while IFS= read -r name; do
+            if [ -n "$name" ]; then
+              gh release delete-asset "$RELEASE_TAG" "$name" --yes
+            fi
+          done <<< "$names"
+
       - name: Upload assets to the GitHub release
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
         run: |
-          mapfile -t zips < <(find artifacts -name 'php_onnxruntime-*.zip' -print)
+          set -euo pipefail
+          mapfile -t zips < <(find artifacts -maxdepth 1 -name 'php_onnxruntime-*.zip' -print | sort -u)
+          if [ ${#zips[@]} -eq 0 ]; then
+            echo "No PIE zips found in artifacts"
+            exit 1
+          fi
           gh release upload "$RELEASE_TAG" "${zips[@]}" --clobber
