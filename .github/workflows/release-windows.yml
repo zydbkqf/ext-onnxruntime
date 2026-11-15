@@ -72,7 +72,7 @@ jobs:
           if (-not (Test-Path -LiteralPath $dll)) {
             throw "onnxruntime.dll not found in the SDK"
           }
-          Get-ChildItem -LiteralPath "artifacts" -Filter "php_onnxruntime-*.zip" | ForEach-Object {
+          Get-ChildItem -LiteralPath "artifacts" -Filter "php_onnxruntime-*.zip" -Recurse | ForEach-Object {
             $zipPath = $_.FullName
             $archive = [IO.Compression.ZipFile]::Open($zipPath, "Update")
             try {
@@ -89,4 +89,6 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "${{ github.event.release.tag_name }}" artifacts/php_onnxruntime-*.zip --clobber
+        run: |
+          mapfile -t zips < <(find artifacts -name 'php_onnxruntime-*.zip' -print)
+          gh release upload "${{ github.event.release.tag_name }}" "${zips[@]}" --clobber
