@@ -11,6 +11,25 @@
 // The SDK must be x64 and must contain onnxruntime.lib.  GPU provider DLLs
 // are runtime dependencies and are not linked into the PHP extension.
 
+// PHP's Windows build puts the sources from src/ into $(BUILD_DIR)\src in the
+// linker object list, but its default compiler rule writes all objects into
+// $(BUILD_DIR) itself.  Create the directory and redirect the compiler's /Fo
+// output so a clean php-sdk/php-windows-builder run does not fail with LNK1181.
+var build_dir = get_define("BUILD_DIR");
+if (build_dir) {
+	var abs_build_dir = FSO.GetAbsolutePathName(build_dir);
+	var build_parent = FSO.GetParentFolderName(abs_build_dir);
+	if (!FSO.FolderExists(build_parent)) {
+		FSO.CreateFolder(build_parent);
+	}
+	if (!FSO.FolderExists(abs_build_dir)) {
+		FSO.CreateFolder(abs_build_dir);
+	}
+	if (!FSO.FolderExists(abs_build_dir + "\\src")) {
+		FSO.CreateFolder(abs_build_dir + "\\src");
+	}
+}
+
 ARG_WITH("onnxruntime", "ONNX Runtime support", "no");
 
 if (PHP_ONNXRUNTIME == "no") {
@@ -37,6 +56,7 @@ if (!FSO.FileExists(ort_lib + "\\onnxruntime.lib")) {
 
 ADD_FLAG("LDFLAGS_ONNXRUNTIME", "/LIBPATH:\"" + ort_lib + "\"");
 ADD_FLAG("LIBS_ONNXRUNTIME", "onnxruntime.lib");
+ADD_FLAG("CFLAGS_BD_", "/Fo$(BUILD_DIR)\\src\\");
 
 EXTENSION("onnxruntime",
 	"src/onnxruntime.cpp src/onnx_tensor.cpp src/zval_converter.cpp " +
