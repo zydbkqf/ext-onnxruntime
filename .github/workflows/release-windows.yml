@@ -3,6 +3,15 @@ name: release-windows
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to build and upload"
+        required: true
+        type: string
+
+env:
+  RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
 
 permissions:
   contents: write
@@ -14,6 +23,8 @@ jobs:
       matrix: ${{ steps.extension-matrix.outputs.matrix }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.RELEASE_TAG }}
       - name: Get the extension matrix
         id: extension-matrix
         uses: php/php-windows-builder/extension-matrix@v1
@@ -30,6 +41,8 @@ jobs:
       matrix: ${{ fromJson(needs.matrix.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.RELEASE_TAG }}
 
       - name: Download ONNX Runtime SDK
         shell: pwsh
@@ -89,6 +102,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: |
           mapfile -t zips < <(find artifacts -name 'php_onnxruntime-*.zip' -print)
-          gh release upload "${{ github.event.release.tag_name }}" "${zips[@]}" --clobber
+          gh release upload "$RELEASE_TAG" "${zips[@]}" --clobber
