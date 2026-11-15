@@ -34,9 +34,11 @@
         "support-nts": true,
         "os-families": [
             "linux",
-            "darwin"
+            "darwin",
+            "windows"
         ],
         "download-url-method": [
+            "pre-packaged-binary",
             "composer-default"
         ],
         "configure-options": [

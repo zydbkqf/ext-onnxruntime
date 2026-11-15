@@ -1,0 +1,92 @@
+name: release-windows
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.extension-matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Get the extension matrix
+        id: extension-matrix
+        uses: php/php-windows-builder/extension-matrix@v1
+        with:
+          php-version-list: "8.0, 8.1, 8.2, 8.3, 8.4, 8.5"
+          arch-list: "x64"
+          ts-list: "nts, ts"
+
+  build:
+    needs: matrix
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.matrix.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download ONNX Runtime SDK
+        shell: pwsh
+        run: |
+          $zip = Join-Path $env:RUNNER_TEMP "onnxruntime.zip"
+          Invoke-WebRequest -Uri "https://github.com/microsoft/onnxruntime/releases/download/v1.28.2/onnxruntime-win-x64-1.28.2.zip" -OutFile $zip
+          Expand-Archive -Path $zip -DestinationPath (Join-Path $env:GITHUB_WORKSPACE "ort") -Force
+
+      - name: Build the extension
+        uses: php/php-windows-builder/extension@v1
+        with:
+          php-version: ${{ matrix.php-version }}
+          arch: ${{ matrix.arch }}
+          ts: ${{ matrix.ts }}
+          args: --with-onnxruntime=${{ github.workspace }}\ort\onnxruntime-win-x64-1.28.2
+          run-tests: false
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Download ONNX Runtime runtime DLL
+        shell: pwsh
+        run: |
+          $zip = Join-Path $env:RUNNER_TEMP "onnxruntime.zip"
+          Invoke-WebRequest -Uri "https://github.com/microsoft/onnxruntime/releases/download/v1.28.2/onnxruntime-win-x64-1.28.2.zip" -OutFile $zip
+          Expand-Archive -Path $zip -DestinationPath (Join-Path $env:GITHUB_WORKSPACE "ort") -Force
+
+      - name: Add onnxruntime.dll to the PIE zips
+        shell: pwsh
+        run: |
+          Add-Type -AssemblyName System.IO.Compression
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $dll = Join-Path $env:GITHUB_WORKSPACE "ort\onnxruntime-win-x64-1.28.2\lib\onnxruntime.dll"
+          if (-not (Test-Path -LiteralPath $dll)) {
+            throw "onnxruntime.dll not found in the SDK"
+          }
+          Get-ChildItem -LiteralPath "artifacts" -Filter "php_onnxruntime-*.zip" | ForEach-Object {
+            $zipPath = $_.FullName
+            $archive = [IO.Compression.ZipFile]::Open($zipPath, "Update")
+            try {
+              if (-not ($archive.Entries | Where-Object { $_.FullName -eq "onnxruntime.dll" })) {
+                [IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
+                  $archive, $dll, "onnxruntime.dll", [IO.Compression.CompressionLevel]::Optimal) | Out-Null
+              }
+            } finally {
+              $archive.Dispose()
+            }
+          }
+
+      - name: Upload assets to the GitHub release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ github.event.release.tag_name }}" artifacts/php_onnxruntime-*.zip --clobber
