@@ -166,6 +166,23 @@ adds `onnxruntime.dll` to each ZIP, and uploads them to the release. The asset
 name follows the PIE Windows convention, for example
 `php_onnxruntime-0.4.9-8.5-nts-vs17-x86_64.zip`.
 
+The default PIE asset is the CPU build. CUDA 12 and CUDA 13 builds are
+published as additional assets with a variant suffix, because PIE has no
+variant field in its Windows asset name:
+
+```text
+php_onnxruntime-0.4.9-8.5-nts-vs17-x86_64-cuda12.zip
+php_onnxruntime-0.4.9-8.5-nts-vs17-x86_64-cuda13.zip
+```
+
+`pie install` always selects the CPU asset. If you need CUDA, download the
+matching `-cuda12` or `-cuda13` ZIP from the GitHub release, extract it, and
+copy `php_onnxruntime.dll` and the runtime DLLs (`onnxruntime.dll`,
+`onnxruntime_providers_cuda.dll`, `onnxruntime_providers_shared.dll`, and any
+other DLLs in the ZIP) into your PHP `extension_dir`. The CUDA build still
+requires a matching NVIDIA driver plus the CUDA Toolkit and cuDNN runtime;
+those are not bundled in the PIE ZIP.
+
 Packagist reports `dev-main` until a version tag exists. Tag `0.4.9` (without a
 `v` prefix), create the GitHub Release for that tag, and let the workflow
 publish the Windows assets before advertising Windows PIE support.
