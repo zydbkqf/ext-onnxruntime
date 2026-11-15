@@ -164,9 +164,9 @@ it requires pre-built ZIP assets on the GitHub release for the tag. The
 `release-windows` workflow builds one ZIP per PHP version and ZTS/NTS mode,
 adds `onnxruntime.dll` to each ZIP, and uploads them to the release. The asset
 name follows the PIE Windows convention, for example
-`php_onnxruntime-0.4.8-8.5-nts-vs17-x86_64.zip`.
+`php_onnxruntime-0.4.9-8.5-nts-vs17-x86_64.zip`.
 
-Packagist reports `dev-main` until a version tag exists. Tag `0.4.8` (without a
+Packagist reports `dev-main` until a version tag exists. Tag `0.4.9` (without a
 `v` prefix), create the GitHub Release for that tag, and let the workflow
 publish the Windows assets before advertising Windows PIE support.
 
