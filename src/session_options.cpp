@@ -2,8 +2,75 @@
 
 #include "onnx_tensor.h"
 
+#include <algorithm>
+#include <cctype>
+#include <memory>
+
 namespace php_ort {
 namespace {
+
+// ORT's generic SessionOptionsAppendExecutionProvider(name, options) entry
+// point only accepts the providers listed in onnxruntime_c_api.h; CUDA and
+// TensorRT are deliberately excluded because they have dedicated, typed
+// appenders.  A CUDA-enabled Linux build exposes CUDA as a built-in provider
+// (it shows up in getAvailableProviders() and has no EpDevice to append), so
+// the name has to be routed through SessionOptionsAppendExecutionProvider_CUDA_V2
+// instead of falling through to the generic call, which fails with
+// "Unknown provider name 'CUDA'".
+std::string lowerName(const std::string &name) {
+    std::string lower(name);
+    std::transform(lower.begin(), lower.end(), lower.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return lower;
+}
+
+bool isCudaProviderName(const std::string &name) {
+    const std::string lower = lowerName(name);
+    return lower == "cuda" || lower == "cudaexecutionprovider";
+}
+
+bool isTensorRtProviderName(const std::string &name) {
+    const std::string lower = lowerName(name);
+    // "NvTensorRtRtx" is a different provider and *is* handled by the generic
+    // name-based appender, so it must not be routed here.
+    return lower == "tensorrt" || lower == "tensorrtexecutionprovider";
+}
+
+void appendCudaProvider(Ort::SessionOptions &options,
+                        const ExecutionProviderConfig &provider) {
+    OrtCUDAProviderOptionsV2 *cuda_options = nullptr;
+    Ort::ThrowOnError(Ort::GetApi().CreateCUDAProviderOptions(&cuda_options));
+    std::unique_ptr<OrtCUDAProviderOptionsV2, void (*)(OrtCUDAProviderOptionsV2 *)> guard(
+        cuda_options, [](OrtCUDAProviderOptionsV2 *ptr) {
+            if (ptr != nullptr) {
+                Ort::GetApi().ReleaseCUDAProviderOptions(ptr);
+            }
+        });
+    for (const auto &option : provider.options) {
+        Ort::ThrowOnError(Ort::GetApi().UpdateCUDAProviderOptionsWithValue(
+            cuda_options, option.first.c_str(),
+            const_cast<char *>(option.second.c_str())));
+    }
+    options.AppendExecutionProvider_CUDA_V2(*cuda_options);
+}
+
+void appendTensorRtProvider(Ort::SessionOptions &options,
+                            const ExecutionProviderConfig &provider) {
+    OrtTensorRTProviderOptionsV2 *trt_options = nullptr;
+    Ort::ThrowOnError(Ort::GetApi().CreateTensorRTProviderOptions(&trt_options));
+    std::unique_ptr<OrtTensorRTProviderOptionsV2, void (*)(OrtTensorRTProviderOptionsV2 *)> guard(
+        trt_options, [](OrtTensorRTProviderOptionsV2 *ptr) {
+            if (ptr != nullptr) {
+                Ort::GetApi().ReleaseTensorRTProviderOptions(ptr);
+            }
+        });
+    for (const auto &option : provider.options) {
+        Ort::ThrowOnError(Ort::GetApi().UpdateTensorRTProviderOptionsWithValue(
+            trt_options, option.first.c_str(),
+            const_cast<char *>(option.second.c_str())));
+    }
+    options.AppendExecutionProvider_TensorRT_V2(*trt_options);
+}
 
 GraphOptimizationLevel graphLevelFromName(const std::string &name) {
     if (name == "disabled") {

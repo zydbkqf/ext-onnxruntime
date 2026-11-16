@@ -6,7 +6,7 @@ Current status: synchronous inference, native async tasks, CPU I/O Binding, fixe
 
 Execution providers have two distinct entry points:
 
-- `appendExecutionProvider()` is the built-in EP path and calls ORT's provider-specific append API.
+- `appendExecutionProvider()` is the built-in EP path and calls ORT's provider-specific append API, including the dedicated CUDA and TensorRT appenders.
 - `appendEpDevice()` is the device-based path. It resolves an `EpDevice` from `Runtime::getEpDevices()` and uses `SessionOptionsAppendExecutionProvider_V2`.
 
 When no EP is appended, ORT defaults are preserved; this project does not promise "CPU only by default".
@@ -29,12 +29,12 @@ When no EP is appended, ORT defaults are preserved; this project does not promis
 | --- | --- | --- | --- |
 | macOS arm64 | 8.5.6 | ZTS | Verified: 34/35 PHPT, 1 Windows-CUDA skip (`033`), ASan, native sync/async stress |
 | macOS arm64 | 8.5.12 | NTS | Verified: 34/35 PHPT, 1 Windows-CUDA skip (`033`); Homebrew PHP build |
-| Linux x86_64 | 8.5.12 | NTS | Verified: 33/35 PHPT, 2 platform skips (CoreML, Windows CUDA); new `--with-onnxruntime=DIR` build path |
-| Linux x86_64 | 8.5.12 | ZTS | Verified: 33/35 PHPT, 2 platform skips (CoreML, Windows CUDA); async ASan+LSan passed; Swoole 6.2.1 Fiber/coroutine/process/thread, `pcntl_fork`, `parallel` |
+| Linux x86_64 | 8.5.12 | NTS | Verified: 33/35 PHPT, 2 platform skips (CoreML, Windows CUDA); CUDA built-in EP runs inference with the ORT 1.28.2 CUDA 13 GPU package; new `--with-onnxruntime=DIR` build path |
+| Linux x86_64 | 8.5.12 | ZTS | Verified: 33/35 PHPT, 2 platform skips (CoreML, Windows CUDA); CUDA built-in EP runs inference with the ORT 1.28.2 CUDA 13 GPU package; async ASan+LSan passed; Swoole 6.2.1 Fiber/coroutine/process/thread, `pcntl_fork`, `parallel` |
 | Linux arm64 | 8.5.12 | NTS/ZTS | Verified: 33/35 PHPT, 2 platform skips (CoreML, Windows CUDA); ORT 1.28.2 aarch64 CPU SDK; PHPT needs the cpuinfo-warning filter described below |
 | Windows x86_64 | 8.5.12 | ZTS | Verified: 34/35 PHPT, 1 CoreML platform skip; `034`/`035` CPU+CUDA async binding; native I/O Binding stress; CUDA Plugin EP smoke |
 
-The PHP code targets the Zend API in PHP 8.0–8.5 and rejects versions below 8.0 at compile time. Verified environments: macOS arm64 PHP 8.5.6 ZTS and PHP 8.5.12 NTS (Homebrew); Linux x86_64 PHP 8.5.12 NTS and ZTS (current feature set, Swoole 6.2.1 on ZTS); Linux arm64 PHP 8.5.12 NTS and ZTS (ORT 1.28.2 aarch64 CPU SDK, source-built PHP); Windows x86_64 PHP 8.5.12 ZTS with VS 2026 + MSVC 14.44 and ORT 1.28.2. On Linux arm64 the ORT prebuilt library prints an `cpuid_info` warning on stderr, so PHPT must be run through a wrapper that filters that line — see `docs/LINUX-ARM64-BASELINE.md`; without it every test fails on output mismatch, not on behaviour. Debug builds, Windows NTS, and other unlisted combinations are not claimed as supported. `phpize`/`php-config` determine the ZTS/NTS and Debug/Release configuration; the resulting module must be installed into the extension_dir of the same PHP build and loaded by that same `php` binary.
+The PHP code targets the Zend API in PHP 8.0–8.5 and rejects versions below 8.0 at compile time. Verified environments: macOS arm64 PHP 8.5.6 ZTS and PHP 8.5.12 NTS (Homebrew); Linux x86_64 PHP 8.5.12 NTS and ZTS (current feature set, Swoole 6.2.1 on ZTS), and the same two builds against the ORT 1.28.2 CUDA 13 GPU package, where the built-in CUDA EP runs inference; Linux arm64 PHP 8.5.12 NTS and ZTS (ORT 1.28.2 aarch64 CPU SDK, source-built PHP); Windows x86_64 PHP 8.5.12 ZTS with VS 2026 + MSVC 14.44 and ORT 1.28.2. On Linux arm64 the ORT prebuilt library prints an `cpuid_info` warning on stderr, so PHPT must be run through a wrapper that filters that line — see `docs/LINUX-ARM64-BASELINE.md`; without it every test fails on output mismatch, not on behaviour. Debug builds, Windows NTS, and other unlisted combinations are not claimed as supported. `phpize`/`php-config` determine the ZTS/NTS and Debug/Release configuration; the resulting module must be installed into the extension_dir of the same PHP build and loaded by that same `php` binary.
 
 ## Requirements
 
@@ -45,7 +45,9 @@ The PHP code targets the Zend API in PHP 8.0–8.5 and rejects versions below 8.
 
 ### Getting ONNX Runtime
 
-Download the official prebuilt package for your platform and extract it:
+Download the official prebuilt package for your platform from the
+[v1.28.2 release](https://github.com/microsoft/onnxruntime/releases/tag/v1.28.2)
+and extract it:
 
 ```text
 onnxruntime-<platform>-1.28.2/
@@ -100,8 +102,23 @@ path and, when a CUDA `EpDevice` is available, a CUDA async-binding branch
 (`cuda=pass`, `cuda4=pass`); the Plugin EP path
 (`registerExecutionProviderLibrary()` -> `getEpDevices()` ->
 `appendEpDevice()`) registers the CUDA provider DLL and runs inference on an
-NVIDIA GPU device. CUDA is a Plugin EP in this ORT build and is not accepted
-by `appendExecutionProvider('CUDA')`.
+NVIDIA GPU device. ORT's generic name-based appender deliberately rejects
+CUDA and TensorRT, so `appendExecutionProvider('CUDA')` and
+`appendExecutionProvider('TensorRT')` are routed to
+`SessionOptionsAppendExecutionProvider_CUDA_V2` / `_TensorRT_V2` with the
+options map applied through the matching `Update...ProviderOptionsWithValue`.
+
+Linux verification against PHP 8.5.12 NTS and ZTS / ORT 1.28.2
+`linux-x64-gpu_cuda13`: 33/35 PHPT pass with the same two platform skips.
+CUDA is a **built-in** EP there — `getAvailableProviders()` lists
+TensorRT/CUDA/CPU while `getEpDevices()` exposes only the CPU device, so
+`appendEpDevice()` cannot reach CUDA and
+`appendExecutionProvider('CUDA', ['device_id' => '0'])` is the entry point.
+On WSL2 with an RTX 3050, a MatMul 512x2048x2048 ran 12.14 ms/run on CPU
+(354 GFLOPS) versus 2.75 ms/run on CUDA (1564 GFLOPS) for ZTS, and
+12.34 vs 2.99 ms for NTS. WSL2 has no `/sys/class/drm`, so the GPU package
+logs a `device_discovery.cc` warning on startup; PHPT must be run through a
+wrapper that filters it, otherwise every test fails on output mismatch.
 
 The repository's verified ORT baseline is **1.28.2**. ORT 1.32 can be used for
 Windows GPU experiments, but its provider/CUDA/cuDNN requirements differ and
@@ -327,7 +344,7 @@ Use `runAsync()` / `runWithBindingAsync()` only when the PHP process can wait fo
 | `setLogSeverityLevel(int|string $level)` | `0..4` or `verbose` / `info` / `warning` / `error` / `fatal`; default `2` / `warning` |
 | `setEnableCpuMemArena(bool $enable)` | Default `true` |
 | `setEnableMemPattern(bool $enable)` | Default `true` |
-| `appendExecutionProvider(string $name, array $options = [])` | Built-in EP path: append a provider such as `CoreML`; options are string -> string |
+| `appendExecutionProvider(string $name, array $options = [])` | Built-in EP path: append a provider such as `CoreML`, `CUDA` or `TensorRT`; options are string -> string |
 | `appendEpDevice(OnnxRuntime\EpDevice $device, array $options = [])` | Device path: append a device from `Runtime::getEpDevices()` using `SessionOptionsAppendExecutionProvider_V2`; options are string -> string |
 | `toArray(): array` | Return the current configuration snapshot, including `intraOpNumThreads`, `graphOptimizationLevel`, `executionProviders`, and `epDevices` |
 
