@@ -2,7 +2,7 @@
 
 A native PHP extension that loads ONNX models and runs inference directly from PHP, using the Zend C API, C++, and the ONNX Runtime native library. It does not use FFI or Python.
 
-Current status: synchronous inference, native async tasks, CPU I/O Binding, fixed-shape preallocated outputs, device tensors, explicit device copies, explicit multi-group batch inference, and async I/O Binding are implemented. The current feature set is verified on macOS arm64 ZTS and NTS, Windows x86_64 ZTS, Linux x86_64 ZTS, and Linux x86_64 NTS (33/35 PHPT, with CoreML and Windows-CUDA platform skips). The Windows CUDA Plugin EP smoke path has passed: register the provider DLL, enumerate the CUDA `EpDevice`, append it with `appendEpDevice()`, and run inference on the NVIDIA GPU. This is a smoke result, not general Plugin EP acceptance across every provider, platform, unload sequence, and failure mode.
+Current status: synchronous inference, native async tasks, CPU I/O Binding, fixed-shape preallocated outputs, device tensors, explicit device copies, explicit multi-group batch inference, and async I/O Binding are implemented. The current feature set is verified on macOS arm64 ZTS and NTS, Windows x86_64 ZTS and NTS, Linux x86_64 ZTS, and Linux x86_64 NTS (33/35 to 35/36 PHPT, with CoreML and Windows-CUDA platform skips). The Windows CUDA Plugin EP smoke path has passed: register the provider DLL, enumerate the CUDA `EpDevice`, append it with `appendEpDevice()`, and run inference on the NVIDIA GPU. Windows CUDA and TensorRT inference through `appendExecutionProvider()` also runs on the GPU. This is a smoke result, not general Plugin EP acceptance across every provider, platform, unload sequence, and failure mode.
 
 Execution providers have two distinct entry points:
 
@@ -32,9 +32,9 @@ When no EP is appended, ORT defaults are preserved; this project does not promis
 | Linux x86_64 | 8.5.12 | NTS | Verified: 33/35 PHPT, 2 platform skips (CoreML, Windows CUDA); CUDA built-in EP runs inference with the ORT 1.28.2 CUDA 13 GPU package; new `--with-onnxruntime=DIR` build path |
 | Linux x86_64 | 8.5.12 | ZTS | Verified: 33/35 PHPT, 2 platform skips (CoreML, Windows CUDA); CUDA built-in EP runs inference with the ORT 1.28.2 CUDA 13 GPU package; async ASan+LSan passed; Swoole 6.2.1 Fiber/coroutine/process/thread, `pcntl_fork`, `parallel` |
 | Linux arm64 | 8.5.12 | NTS/ZTS | Verified: 33/35 PHPT, 2 platform skips (CoreML, Windows CUDA); ORT 1.28.2 aarch64 CPU SDK; PHPT needs the cpuinfo-warning filter described below |
-| Windows x86_64 | 8.5.12 | ZTS | Verified: 34/35 PHPT, 1 CoreML platform skip; `034`/`035` CPU+CUDA async binding; native I/O Binding stress; CUDA Plugin EP smoke |
+| Windows x86_64 | 8.5.12 | NTS/ZTS | Verified: 35/36 PHPT, 1 CoreML platform skip; `034`/`035` CPU+CUDA async binding; native I/O Binding stress; CUDA Plugin EP smoke; CUDA and TensorRT inference via `appendExecutionProvider()` on the NVIDIA GPU |
 
-The PHP code targets the Zend API in PHP 8.0–8.5 and rejects versions below 8.0 at compile time. Verified environments: macOS arm64 PHP 8.5.6 ZTS and PHP 8.5.12 NTS (Homebrew); Linux x86_64 PHP 8.5.12 NTS and ZTS (current feature set, Swoole 6.2.1 on ZTS), and the same two builds against the ORT 1.28.2 CUDA 13 GPU package, where the built-in CUDA EP runs inference; Linux arm64 PHP 8.5.12 NTS and ZTS (ORT 1.28.2 aarch64 CPU SDK, source-built PHP); Windows x86_64 PHP 8.5.12 ZTS with VS 2026 + MSVC 14.44 and ORT 1.28.2. On Linux arm64 the ORT prebuilt library prints an `cpuid_info` warning on stderr, so PHPT must be run through a wrapper that filters that line — see `docs/LINUX-ARM64-BASELINE.md`; without it every test fails on output mismatch, not on behaviour. Debug builds, Windows NTS, and other unlisted combinations are not claimed as supported. `phpize`/`php-config` determine the ZTS/NTS and Debug/Release configuration; the resulting module must be installed into the extension_dir of the same PHP build and loaded by that same `php` binary.
+The PHP code targets the Zend API in PHP 8.0–8.5 and rejects versions below 8.0 at compile time. Verified environments: macOS arm64 PHP 8.5.6 ZTS and PHP 8.5.12 NTS (Homebrew); Linux x86_64 PHP 8.5.12 NTS and ZTS (current feature set, Swoole 6.2.1 on ZTS), and the same two builds against the ORT 1.28.2 CUDA 13 GPU package, where the built-in CUDA EP runs inference; Linux arm64 PHP 8.5.12 NTS and ZTS (ORT 1.28.2 aarch64 CPU SDK, source-built PHP); Windows x86_64 PHP 8.5.12 ZTS and NTS with VS 2026 + MSVC 14.44 and ORT 1.28.2, including CUDA and TensorRT inference on an RTX 3050. On Linux arm64 the ORT prebuilt library prints an `cpuid_info` warning on stderr, so PHPT must be run through a wrapper that filters that line — see `docs/LINUX-ARM64-BASELINE.md`; without it every test fails on output mismatch, not on behaviour. Debug builds and other unlisted combinations are not claimed as supported. `phpize`/`php-config` determine the ZTS/NTS and Debug/Release configuration; the resulting module must be installed into the extension_dir of the same PHP build and loaded by that same `php` binary.
 
 ## Requirements
 
@@ -96,8 +96,30 @@ DLLs (`onnxruntime_providers_cuda.dll`, `onnxruntime_providers_shared.dll`,
 etc.) are runtime dependencies and must be deployed next to the ORT DLL; they
 are not linked into the PHP extension.
 
-Windows verification against PHP 8.5.12 ZTS / ORT 1.28.2:
-34/35 PHPT pass, 1 CoreML platform skip; `034`/`035` exercise both the CPU
+Windows GPU prerequisites:
+
+- `onnxruntime.dll`, `onnxruntime_providers_shared.dll`,
+  `onnxruntime_providers_cuda.dll` and `onnxruntime_providers_tensorrt.dll`
+  next to `php.exe`.
+- **Keep them next to `php.exe`, not only on `PATH`.** Windows 10/11 ships its
+  own `onnxruntime.dll` (ORT 1.17) in `C:\Windows\System32`, and `System32`
+  comes before `PATH` in the DLL search order. When the runtime sits only on
+  `PATH`, the extension picks up the system copy and fails with
+  `The requested API version [28] is not available ... Current ORT Version is: 1.17.1`.
+  Placing the 1.28.2 runtime in the `php.exe` directory wins because the
+  application directory is searched first.
+- CUDA 13: `cudart64_13.dll`, `cublas64_13.dll`, `cublasLt64_13.dll` (CUDA
+  toolkit `bin\x64`) and `cudnn64_9.dll` (cuDNN 9) on `PATH`. The CUDA
+  provider refuses to load with `Error loading ... which depends on
+  "cublasLt64_13.dll" which is missing`; the TensorRT provider additionally
+  needs cuDNN.
+- TensorRT 10.16 (`TensorRT-10.16.1.11`): its `bin` directory
+  (`nvinfer_10.dll`, `nvonnxparser_10.dll`, plugin and builder-resource DLLs)
+  on `PATH`, and the TensorRT **CUDA EP added after it** — the TensorRT EP
+  falls back to CUDA, so append TensorRT first and CUDA second.
+
+Windows verification against PHP 8.5.12 ZTS / NTS / ORT 1.28.2:
+35/36 PHPT pass, 1 CoreML platform skip; `034`/`035` exercise both the CPU
 path and, when a CUDA `EpDevice` is available, a CUDA async-binding branch
 (`cuda=pass`, `cuda4=pass`); the Plugin EP path
 (`registerExecutionProviderLibrary()` -> `getEpDevices()` ->
@@ -106,7 +128,21 @@ NVIDIA GPU device. ORT's generic name-based appender deliberately rejects
 CUDA and TensorRT, so `appendExecutionProvider('CUDA')` and
 `appendExecutionProvider('TensorRT')` are routed to
 `SessionOptionsAppendExecutionProvider_CUDA_V2` / `_TensorRT_V2` with the
-options map applied through the matching `Update...ProviderOptionsWithValue`.
+options map applied through the matching `Update...ProviderOptionsWithValue`;
+`036` guards that routing. On an RTX 3050 with
+MatMul 512x2048x2048, ZTS ran 12.51 ms/run on CPU, 3.20 ms/run on CUDA and
+2.95 ms/run on TensorRT (fp16, 4.3 s engine build, cached); NTS ran 11.25 /
+3.24 / 2.96 ms/run. These are smoke numbers, not tuned baselines.
+
+Notes on the Windows build: the extension must be linked with the same MSVC
+toolset as the PHP core (`14.44.35207` here). Building with the newer
+`14.52` toolset produces `Can't load module ... as it's linked with 14.52, but
+the core is linked with 14.44`, so pass `-vcvars_ver=14.44.35207` to
+`VsDevCmd.bat`. `VsDevCmd.bat`, not `vcvars64.bat`, is also what puts
+`mc.exe`/`mt.exe` from the Windows SDK on `PATH`; without it `configure`
+fails with `ERROR: mc is required`. NTS builds need the **NTS** devel pack
+(`php-devel-pack-8.5.12-1-nts-Win32-vs17-x64.zip`) — the ZTS one cannot be
+reused.
 
 Linux verification against PHP 8.5.12 NTS and ZTS / ORT 1.28.2
 `linux-x64-gpu_cuda13`: 33/35 PHPT pass with the same two platform skips.

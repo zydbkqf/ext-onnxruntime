@@ -128,6 +128,14 @@ void SessionConfig::applyTo(Ort::SessionOptions &options,
 
     for (const ExecutionProviderConfig &provider : execution_providers) {
         if (provider.kind == ExecutionProviderKind::Builtin) {
+            if (isCudaProviderName(provider.name)) {
+                appendCudaProvider(options, provider);
+                continue;
+            }
+            if (isTensorRtProviderName(provider.name)) {
+                appendTensorRtProvider(options, provider);
+                continue;
+            }
             options.AppendExecutionProvider(provider.name, provider.options);
             continue;
         }
