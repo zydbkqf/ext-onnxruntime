@@ -60,6 +60,11 @@ if ($provider === 'coreml') {
         throw new RuntimeException('CUDA EpDevice not found');
     }
     $options->appendEpDevice($cuda);
+} elseif ($provider === 'tensorrt') {
+    // The TensorRT EP has no device-based path here; it is appended through the
+    // dedicated appender and falls back to the CUDA EP appended after it.
+    $options->appendExecutionProvider('TensorRT', $spec['trt_options'] ?? []);
+    $options->appendExecutionProvider('CUDA', ['device_id' => '0']);
 } elseif ($provider !== 'cpu') {
     throw new RuntimeException('unknown provider: ' . $provider);
 }

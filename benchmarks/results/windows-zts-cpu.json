@@ -1,0 +1,62 @@
+{
+  "platform": "Windows-11-10.0.26300-SP0",
+  "machine": "AMD64",
+  "provider": "CPUExecutionProvider",
+  "model": "Qdrant/bge-small-en-v1.5-onnx-Q",
+  "model_file": "E:\\models\\bge-small-en-v1.5-onnx-Q\\model_optimized.onnx",
+  "onnxruntime_python": "1.32.0",
+  "batch_size": 8,
+  "sequence_length": 64,
+  "iterations": 100,
+  "warmup": 3,
+  "threads": 1,
+  "fastembed_e2e": {
+    "mean_ms": 240.26320199999998,
+    "p50_ms": 238.7585,
+    "p95_ms": 251.6537,
+    "min_ms": 234.7469,
+    "max_ms": 258.5796
+  },
+  "fastembed_ort": {
+    "mean_ms": 239.264018,
+    "p50_ms": 237.7871,
+    "p95_ms": 249.3585,
+    "min_ms": 233.6416,
+    "max_ms": 261.4714
+  },
+  "raw_ort_python": {
+    "mean_ms": 237.819925,
+    "p50_ms": 236.6635,
+    "p95_ms": 245.308,
+    "min_ms": 233.0791,
+    "max_ms": 264.828
+  },
+  "php_ort": {
+    "framework": "php",
+    "provider": "cpu",
+    "php_version": "8.5.12",
+    "extension_version": "0.4.0",
+    "batch_size": 8,
+    "sequence_length": 64,
+    "iterations": 100,
+    "mean_ms": 223.00065399999997,
+    "p50_ms": 221.8371,
+    "p95_ms": 233.0437,
+    "min_ms": 218.3097,
+    "max_ms": 251.4856
+  },
+  "php_tokenize_ort": {
+    "framework": "php_tokenize_ort",
+    "provider": "cpu",
+    "php_version": "8.5.12",
+    "extension_version": "0.4.0",
+    "batch_size": 8,
+    "sequence_length": 64,
+    "iterations": 100,
+    "mean_ms": 222.79435500000002,
+    "p50_ms": 221.4179,
+    "p95_ms": 233.9276,
+    "min_ms": 218.1619,
+    "max_ms": 246.1785
+  }
+}

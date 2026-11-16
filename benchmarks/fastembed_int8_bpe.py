@@ -48,8 +48,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--php-script", default=str(Path(__file__).with_name("php_ort_bench.php")))
     parser.add_argument("--php-tokenize-script",
                         default=str(Path(__file__).with_name("php_tokenize_ort_bench.php")))
-    parser.add_argument("--provider", choices=["cpu", "coreml", "cuda"], default="cpu")
+    parser.add_argument("--provider", choices=["cpu", "coreml", "cuda", "tensorrt"], default="cpu")
     parser.add_argument("--cuda-lib", default=None, help="CUDA provider DLL for PHP (Windows)")
+    parser.add_argument("--trt-cache-dir", default=None,
+                        help="TensorRT engine cache directory (created if missing)")
     parser.add_argument("--ort-lib-dir", default=None, help="ORT shared-library directory")
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--sequence-length", type=int, default=64)
@@ -94,6 +96,7 @@ def main() -> int:
         "cpu": "CPUExecutionProvider",
         "coreml": "CoreMLExecutionProvider",
         "cuda": "CUDAExecutionProvider",
+        "tensorrt": "TensorrtExecutionProvider",
     }[args.provider]
 
     import onnxruntime as ort
@@ -101,10 +104,29 @@ def main() -> int:
     if provider not in available:
         raise SystemExit(f"{provider} unavailable; available={available}")
 
+    # The TensorRT EP falls back to CUDA for partitions it cannot take, so the
+    # CUDA EP has to be appended after it. The engine cache keeps the build out
+    # of the measured section on reruns.
+    trt_cache = (Path(args.trt_cache_dir).resolve() if args.trt_cache_dir
+                 else Path(tempfile.mkdtemp(prefix="ort-trt-cache-")))
+    trt_cache.mkdir(parents=True, exist_ok=True)
+    trt_python_options = {
+        "device_id": 0,
+        "trt_engine_cache_enable": True,
+        "trt_engine_cache_path": str(trt_cache),
+        "trt_fp16_enable": True,
+    }
+    trt_php_options = {key: str(value).lower() if isinstance(value, bool) else str(value)
+                       for key, value in trt_python_options.items()}
+    python_providers = (
+        [("TensorrtExecutionProvider", trt_python_options), "CUDAExecutionProvider"]
+        if args.provider == "tensorrt" else [provider]
+    )
+
     model = TextEmbedding(
         model_name="BAAI/bge-small-en-v1.5",
         specific_model_path=str(model_dir),
-        providers=[provider],
+        providers=python_providers,
         threads=args.threads,
     )
     tokenizer = model.model.tokenizer
@@ -136,6 +158,7 @@ def main() -> int:
         "model": str(model_path),
         "provider": args.provider,
         "cuda_lib": args.cuda_lib,
+        "trt_options": trt_php_options,
         "threads": args.threads,
         "iterations": args.iterations,
         "warmup": args.warmup,
@@ -175,6 +198,7 @@ def main() -> int:
         "model": str(model_path),
         "provider": args.provider,
         "cuda_lib": args.cuda_lib,
+        "trt_options": trt_php_options,
         "threads": args.threads,
         "iterations": args.iterations,
         "warmup": args.warmup,

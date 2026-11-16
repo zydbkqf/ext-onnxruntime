@@ -1,0 +1,62 @@
+{
+  "platform": "Windows-11-10.0.26300-SP0",
+  "machine": "AMD64",
+  "provider": "TensorrtExecutionProvider",
+  "model": "Qdrant/bge-small-en-v1.5-onnx-Q",
+  "model_file": "E:\\models\\bge-small-en-v1.5-onnx-Q-trt\\model_optimized.onnx",
+  "onnxruntime_python": "1.32.0",
+  "batch_size": 8,
+  "sequence_length": 64,
+  "iterations": 100,
+  "warmup": 3,
+  "threads": 1,
+  "fastembed_e2e": {
+    "mean_ms": 5.264619,
+    "p50_ms": 5.6718,
+    "p95_ms": 6.4257,
+    "min_ms": 3.7741,
+    "max_ms": 6.6914
+  },
+  "fastembed_ort": {
+    "mean_ms": 5.2466669999999995,
+    "p50_ms": 5.4427,
+    "p95_ms": 6.3649,
+    "min_ms": 3.6916,
+    "max_ms": 6.5935
+  },
+  "raw_ort_python": {
+    "mean_ms": 3.685792,
+    "p50_ms": 3.4521,
+    "p95_ms": 5.0741,
+    "min_ms": 3.2303,
+    "max_ms": 6.9811
+  },
+  "php_ort": {
+    "framework": "php",
+    "provider": "tensorrt",
+    "php_version": "8.5.12",
+    "extension_version": "0.4.0",
+    "batch_size": 8,
+    "sequence_length": 64,
+    "iterations": 100,
+    "mean_ms": 6.370184000000003,
+    "p50_ms": 6.164,
+    "p95_ms": 7.988,
+    "min_ms": 5.4318,
+    "max_ms": 13.766
+  },
+  "php_tokenize_ort": {
+    "framework": "php_tokenize_ort",
+    "provider": "tensorrt",
+    "php_version": "8.5.12",
+    "extension_version": "0.4.0",
+    "batch_size": 8,
+    "sequence_length": 64,
+    "iterations": 100,
+    "mean_ms": 6.451131000000001,
+    "p50_ms": 6.3081,
+    "p95_ms": 8.0857,
+    "min_ms": 5.494,
+    "max_ms": 8.3335
+  }
+}

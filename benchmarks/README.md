@@ -55,6 +55,14 @@ Provider values:
 - `coreml`: `CoreMLExecutionProvider` (macOS)
 - `cuda`: `CUDAExecutionProvider` (Windows/Linux with `onnxruntime-gpu`,
   plus `--cuda-lib` pointing at the PHP CUDA provider DLL on Windows)
+- `tensorrt`: `TensorrtExecutionProvider` with `CUDAExecutionProvider` as its
+  fallback. TensorRT builds an engine on first run; `--trt-cache-dir` points at
+  a cache directory so reruns reuse it instead of rebuilding. The engine build
+  happens before the measured section, so the numbers are steady-state.
+
+`--output FILE` writes the full result JSON for every provider column
+(fastembed e2e, fastembed tokenizer+ORT, Python raw ORT, PHP tokenize+ORT,
+PHP ORT); the committed samples live in `benchmarks/results/`.
 
 Windows CUDA example:
 
@@ -93,12 +101,27 @@ Python ORT 1.32.0 (`fastembed-gpu` 0.9.1), CUDA 13.4, cuDNN 9.28.1.4,
 
 | Provider | fastembed e2e | fastembed tokenizer+ORT | Python raw ORT | PHP tokenize+ORT | PHP ORT |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| CPU | 241.4 ms | 240.7 ms | 239.6 ms | 226.2 ms | 223.2 ms |
-| CUDA | 3.73 ms | 3.67 ms | 3.04 ms | 3.27 ms | 3.10 ms |
+| CPU | 240.3 ms | 239.3 ms | 237.8 ms | 222.8 ms | 223.0 ms |
+| CUDA | 3.64 ms | 3.72 ms | 3.05 ms | 3.19 ms | 3.16 ms |
+| CUDA + TensorRT | 5.26 ms | 5.25 ms | 3.69 ms | 6.45 ms | 6.37 ms |
 
 Windows CUDA is dominated by the GPU path: PHP tokenize+ORT is about 0.18 ms
 slower than PHP ORT-only for this fixed batch, while the FastEmbed Python
 wrapper is about 0.69 ms slower than raw ORT.
+
+The TensorRT row is not a win here: TensorRT only takes the subgraphs it
+supports and hands the rest back to the CUDA EP, so on a batch-8 × 64-token
+BGE-small model its per-run overhead dominates and it lands ~2x slower than
+plain CUDA. It is reported because it proves the path runs, not as a
+recommendation for small models.
+
+TensorRT also requires shape inference to be present on the model before
+session creation — this int8 QDQ export has no inferred intermediate shapes,
+so ORT fails with `TensorRT input: <node> has no shape specified`. The row
+above was measured on a byte-identical copy of `model_optimized.onnx` that
+went through `onnx.shape_inference.infer_shapes()` first
+(`E:\models\bge-small-en-v1.5-onnx-Q-trt`); same weights, same graph, only
+shape annotations added. The CPU and CUDA rows use the original file.
 
 These are latency measurements for the fixed batch above, not throughput
 claims. They are single-machine samples and should be rerun on the deployment
@@ -106,3 +129,29 @@ hardware. When the Python ORT and PHP extension ORT versions differ (for
 example, a Windows environment with Python ORT 1.32 and extension ORT 1.28),
 compare the columns as end-to-end samples, not as a controlled ORT-version
 study.
+
+## Result JSON
+
+Committed samples from the Windows run above (100 iterations each, PHP 8.5.12
+ZTS extension 0.4.0, Python ORT 1.32.0):
+
+- `benchmarks/results/windows-zts-cpu.json`
+- `benchmarks/results/windows-zts-cuda.json`
+- `benchmarks/results/windows-zts-tensorrt.json`
+
+Each file records `platform`, `machine`, `provider`, `model_file`,
+`onnxruntime_python` and the five percentile sets (mean/p50/p95/min/max) for
+every column, so a table row can be rebuilt without rerunning. Regenerate:
+
+```bat
+python benchmarks\fastembed_int8_bpe.py ^
+  --model-dir E:\models\bge-small-en-v1.5-onnx-Q ^
+  --php D:\php\php.exe ^
+  --extension D:\php\ext\php_onnxruntime.dll ^
+  --provider cuda --cuda-lib D:\php\onnxruntime_providers_cuda.dll ^
+  --iterations 100 --output benchmarks\results\windows-zts-cuda.json
+```
+
+For the TensorRT row, pass `--provider tensorrt`, point `--model-dir` at the
+shape-inferred copy (`E:\models\bge-small-en-v1.5-onnx-Q-trt`), and add
+`--trt-cache-dir E:\trt-cache` so the engine is cached instead of rebuilt.
