@@ -31,10 +31,10 @@ When no EP is appended, ORT defaults are preserved; this project does not promis
 | macOS arm64 | 8.5.12 | NTS | Verified: 34/35 PHPT, 1 Windows-CUDA skip (`033`); Homebrew PHP build |
 | Linux x86_64 | 8.5.12 | NTS | Verified: 33/35 PHPT, 2 platform skips (CoreML, Windows CUDA); new `--with-onnxruntime=DIR` build path |
 | Linux x86_64 | 8.5.12 | ZTS | Verified: 33/35 PHPT, 2 platform skips (CoreML, Windows CUDA); async ASan+LSan passed; Swoole 6.2.1 Fiber/coroutine/process/thread, `pcntl_fork`, `parallel` |
-| Linux arm64 | 8.x | ZTS/NTS | Not verified |
+| Linux arm64 | 8.5.12 | NTS/ZTS | Verified: 33/35 PHPT, 2 platform skips (CoreML, Windows CUDA); ORT 1.28.2 aarch64 CPU SDK; PHPT needs the cpuinfo-warning filter described below |
 | Windows x86_64 | 8.5.12 | ZTS | Verified: 34/35 PHPT, 1 CoreML platform skip; `034`/`035` CPU+CUDA async binding; native I/O Binding stress; CUDA Plugin EP smoke |
 
-The PHP code targets the Zend API in PHP 8.0–8.5 and rejects versions below 8.0 at compile time. Verified environments: macOS arm64 PHP 8.5.6 ZTS and PHP 8.5.12 NTS (Homebrew); Linux x86_64 PHP 8.5.12 NTS and ZTS (current feature set, Swoole 6.2.1 on ZTS); Windows x86_64 PHP 8.5.12 ZTS with VS 2026 + MSVC 14.44 and ORT 1.28.2. Debug builds, Linux arm64, Windows NTS, and other unlisted combinations are not claimed as supported. `phpize`/`php-config` determine the ZTS/NTS and Debug/Release configuration; the resulting module must be installed into the extension_dir of the same PHP build and loaded by that same `php` binary.
+The PHP code targets the Zend API in PHP 8.0–8.5 and rejects versions below 8.0 at compile time. Verified environments: macOS arm64 PHP 8.5.6 ZTS and PHP 8.5.12 NTS (Homebrew); Linux x86_64 PHP 8.5.12 NTS and ZTS (current feature set, Swoole 6.2.1 on ZTS); Linux arm64 PHP 8.5.12 NTS and ZTS (ORT 1.28.2 aarch64 CPU SDK, source-built PHP); Windows x86_64 PHP 8.5.12 ZTS with VS 2026 + MSVC 14.44 and ORT 1.28.2. On Linux arm64 the ORT prebuilt library prints an `cpuid_info` warning on stderr, so PHPT must be run through a wrapper that filters that line — see `docs/LINUX-ARM64-BASELINE.md`; without it every test fails on output mismatch, not on behaviour. Debug builds, Windows NTS, and other unlisted combinations are not claimed as supported. `phpize`/`php-config` determine the ZTS/NTS and Debug/Release configuration; the resulting module must be installed into the extension_dir of the same PHP build and loaded by that same `php` binary.
 
 ## Requirements
 
