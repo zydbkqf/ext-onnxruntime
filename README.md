@@ -191,7 +191,7 @@ Or load it for a single command:
 php -d extension=onnxruntime.so --ri onnxruntime
 ```
 
-`php --ri onnxruntime` should report extension version `0.4.0`. Use `php -n -d extension=...` to exclude unrelated ini settings while debugging.
+`php --ri onnxruntime` should report extension version `0.4.10`. Use `php -n -d extension=...` to exclude unrelated ini settings while debugging.
 
 ### PECL
 

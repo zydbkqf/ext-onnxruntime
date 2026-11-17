@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define PHP_ONNXRUNTIME_EXTNAME "onnxruntime"
-#define PHP_ONNXRUNTIME_VERSION "0.4.0"
+#define PHP_ONNXRUNTIME_VERSION "0.4.10"
 
 extern zend_module_entry onnxruntime_module_entry;
 #define phpext_onnxruntime_ptr &onnxruntime_module_entry

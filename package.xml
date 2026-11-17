@@ -14,9 +14,9 @@
   <email>denischeung@users.noreply.github.com</email>
   <active>yes</active>
  </lead>
- <date>2026-11-15</date>
+ <date>2026-11-17</date>
  <version>
-  <release>0.4.9</release>
+  <release>0.4.10</release>
   <api>0.4.0</api>
  </version>
  <stability>
@@ -24,7 +24,7 @@
   <api>beta</api>
  </stability>
  <license uri="https://opensource.org/licenses/MIT">MIT</license>
- <notes>Build with a required --with-onnxruntime=DIR pointing at the extracted ONNX Runtime prebuilt package. Includes synchronous and asynchronous inference, CPU I/O Binding, fixed-shape preallocated output, device tensors, explicit device copies, explicit batch inference and async I/O Binding. Also hardens DeviceTensor/Plugin EP lifetime ordering, releases queue capacity on cancelled tasks, and makes Task timeout conversion and worker-pool construction overflow/exception safe.</notes>
+ <notes>Build with a required --with-onnxruntime=DIR pointing at the extracted ONNX Runtime prebuilt package. Includes synchronous and asynchronous inference, CPU I/O Binding, fixed-shape preallocated output, device tensors, explicit device copies, explicit batch inference and async I/O Binding. Routes appendExecutionProvider('CUDA') and ('TensorRT') through the dedicated ORT appenders instead of the generic name-based one, which rejects those names; verified on Windows with CUDA and TensorRT inference. Also hardens DeviceTensor/Plugin EP lifetime ordering, releases queue capacity on cancelled tasks, and makes Task timeout conversion and worker-pool construction overflow/exception safe.</notes>
  <contents>
   <dir name="/">
    <file name="config.m4" role="src"/>
@@ -38,6 +38,9 @@
    <file name="benchmarks/php_ort_bench.php" role="test"/>
    <file name="benchmarks/php_tokenize_ort_bench.php" role="test"/>
    <file name="benchmarks/php_wordpiece.php" role="test"/>
+   <file name="benchmarks/results/windows-zts-cpu.json" role="doc"/>
+   <file name="benchmarks/results/windows-zts-cuda.json" role="doc"/>
+   <file name="benchmarks/results/windows-zts-tensorrt.json" role="doc"/>
    <file name="src/device_tensor.cpp" role="src"/>
    <file name="src/ep_device.cpp" role="src"/>
    <file name="src/async_engine.h" role="src"/>
@@ -98,6 +101,7 @@
    <file name="tests/033-device-tensor-cuda.phpt" role="test"/>
    <file name="tests/034-async-iobinding.phpt" role="test"/>
    <file name="tests/035-async-iobinding-preallocated.phpt" role="test"/>
+   <file name="tests/036-appender-routing.phpt" role="test"/>
    <file name="tests/build-smoke.sh" role="test"/>
    <file name="tests/native_stress.cpp" role="test"/>
    <file name="tests/native_async_stress.cpp" role="test"/>
