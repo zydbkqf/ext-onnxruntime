@@ -30,6 +30,7 @@ When no EP is appended, ORT defaults are preserved; this project does not promis
 | macOS arm64 | 8.5.6 | ZTS | Verified: 34/35 PHPT, 1 Windows-CUDA skip (`033`), ASan, native sync/async stress |
 | macOS arm64 | 8.5.12 | NTS | Verified: 34/35 PHPT, 1 Windows-CUDA skip (`033`); Homebrew PHP build |
 | macOS arm64 | 8.6.0 | ZTS | Verified: 34/36 PHPT, 2 platform skips (CoreML, Windows CUDA); PHP 8.6 removed `XtOffsetOf` |
+| Linux x86_64 | 8.6.0 | NTS | Verified: 33/36 PHPT, 3 platform skips (CoreML, Windows CUDA, no CUDA/TensorRT provider in the CPU SDK); PHP built from source, ORT 1.28.0 CPU runtime |
 | Linux x86_64 | 8.5.12 | NTS | Verified: 33/35 PHPT, 2 platform skips (CoreML, Windows CUDA); CUDA built-in EP runs inference with the ORT 1.28.2 CUDA 13 GPU package; new `--with-onnxruntime=DIR` build path |
 | Linux x86_64 | 8.5.12 | ZTS | Verified: 33/35 PHPT, 2 platform skips (CoreML, Windows CUDA); CUDA built-in EP runs inference with the ORT 1.28.2 CUDA 13 GPU package; async ASan+LSan passed; Swoole 6.2.1 Fiber/coroutine/process/thread, `pcntl_fork`, `parallel` |
 | Linux arm64 | 8.5.12 | NTS/ZTS | Verified: 33/35 PHPT, 2 platform skips (CoreML, Windows CUDA); ORT 1.28.2 aarch64 CPU SDK; PHPT needs the cpuinfo-warning filter described below |

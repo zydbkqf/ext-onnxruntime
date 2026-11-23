@@ -16,7 +16,9 @@ $task = $s->runAsync(['X' => $input]);
 unset($input); // worker owns a deep copy
 
 echo 'class=', get_class($task), "\n";
-echo 'state0=', in_array($task->getState(), ['queued', 'running'], true) ? 'pending' : 'bad', "\n";
+$state0 = $task->getState();
+// A fast worker can finish before this observation; completed is a valid snapshot too.
+echo 'state0=', in_array($state0, ['queued', 'running', 'completed'], true) ? 'pending' : 'bad', "\n";
 echo 'wait=', $task->wait(5.0) ? 'true' : 'false', "\n";
 echo 'ready=', $task->isReady() ? 'true' : 'false', "\n";
 echo 'state1=', $task->getState(), "\n";
