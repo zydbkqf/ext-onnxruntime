@@ -23,7 +23,7 @@
         "source": "https://github.com/zydbkqf/ext-onnxruntime"
     },
     "require": {
-        "php": ">=8.0 <8.6"
+        "php": ">=8.0 <8.7"
     },
     "replace": {
         "ext-onnxruntime": "*"

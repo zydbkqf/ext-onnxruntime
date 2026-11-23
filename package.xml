@@ -14,9 +14,9 @@
   <email>denischeung@users.noreply.github.com</email>
   <active>yes</active>
  </lead>
- <date>2026-11-17</date>
+ <date>2026-11-23</date>
  <version>
-  <release>0.4.10</release>
+  <release>0.4.11</release>
   <api>0.4.0</api>
  </version>
  <stability>
@@ -24,7 +24,7 @@
   <api>beta</api>
  </stability>
  <license uri="https://opensource.org/licenses/MIT">MIT</license>
- <notes>Build with a required --with-onnxruntime=DIR pointing at the extracted ONNX Runtime prebuilt package. Includes synchronous and asynchronous inference, CPU I/O Binding, fixed-shape preallocated output, device tensors, explicit device copies, explicit batch inference and async I/O Binding. Routes appendExecutionProvider('CUDA') and ('TensorRT') through the dedicated ORT appenders instead of the generic name-based one, which rejects those names; verified on Windows with CUDA and TensorRT inference. Also hardens DeviceTensor/Plugin EP lifetime ordering, releases queue capacity on cancelled tasks, and makes Task timeout conversion and worker-pool construction overflow/exception safe.</notes>
+ <notes>Adds PHP 8.6 support: PHP 8.6 removed the legacy XtOffsetOf() macro, so the extension now uses offsetof() through a version-guarded compat macro (PHP 8.0-8.5 keep using XtOffsetOf); composer.json accepts PHP &lt;8.7. Build with a required --with-onnxruntime=DIR pointing at the extracted ONNX Runtime prebuilt package. Includes synchronous and asynchronous inference, CPU I/O Binding, fixed-shape preallocated output, device tensors, explicit device copies, explicit batch inference and async I/O Binding. Routes appendExecutionProvider('CUDA') and ('TensorRT') through the dedicated ORT appenders instead of the generic name-based one, which rejects those names; verified on Windows with CUDA and TensorRT inference. Also hardens DeviceTensor/Plugin EP lifetime ordering, releases queue capacity on cancelled tasks, and makes Task timeout conversion and worker-pool construction overflow/exception safe.</notes>
  <contents>
   <dir name="/">
    <file name="config.m4" role="src"/>

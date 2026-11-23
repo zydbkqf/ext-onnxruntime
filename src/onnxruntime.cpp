@@ -67,7 +67,7 @@ static inline php_ort_tensor_object *php_ort_tensor_from_obj(
     zend_object *object) {
     return reinterpret_cast<php_ort_tensor_object *>(
         reinterpret_cast<char *>(object) -
-        XtOffsetOf(php_ort_tensor_object, std));
+        PHP_ORT_OFFSETOF(php_ort_tensor_object, std));
 }
 
 typedef struct {
@@ -81,7 +81,7 @@ static inline php_ort_ortvalue_object *php_ort_ortvalue_from_obj(
     zend_object *object) {
     return reinterpret_cast<php_ort_ortvalue_object *>(
         reinterpret_cast<char *>(object) -
-        XtOffsetOf(php_ort_ortvalue_object, std));
+        PHP_ORT_OFFSETOF(php_ort_ortvalue_object, std));
 }
 
 typedef struct {
@@ -93,7 +93,7 @@ static inline php_ort_session_object *php_ort_session_from_obj(
     zend_object *object) {
     return reinterpret_cast<php_ort_session_object *>(
         reinterpret_cast<char *>(object) -
-        XtOffsetOf(php_ort_session_object, std));
+        PHP_ORT_OFFSETOF(php_ort_session_object, std));
 }
 
 typedef struct {
@@ -105,7 +105,7 @@ static inline php_ort_session_options_object *php_ort_session_options_from_obj(
     zend_object *object) {
     return reinterpret_cast<php_ort_session_options_object *>(
         reinterpret_cast<char *>(object) -
-        XtOffsetOf(php_ort_session_options_object, std));
+        PHP_ORT_OFFSETOF(php_ort_session_options_object, std));
 }
 
 typedef struct {
@@ -132,28 +132,28 @@ static inline php_ort_iobinding_object *php_ort_iobinding_from_obj(
     zend_object *object) {
     return reinterpret_cast<php_ort_iobinding_object *>(
         reinterpret_cast<char *>(object) -
-        XtOffsetOf(php_ort_iobinding_object, std));
+        PHP_ORT_OFFSETOF(php_ort_iobinding_object, std));
 }
 
 static inline php_ort_epdevice_object *php_ort_epdevice_from_obj(
     zend_object *object) {
     return reinterpret_cast<php_ort_epdevice_object *>(
         reinterpret_cast<char *>(object) -
-        XtOffsetOf(php_ort_epdevice_object, std));
+        PHP_ORT_OFFSETOF(php_ort_epdevice_object, std));
 }
 
 static inline php_ort_devicetensor_object *php_ort_devicetensor_from_obj(
     zend_object *object) {
     return reinterpret_cast<php_ort_devicetensor_object *>(
         reinterpret_cast<char *>(object) -
-        XtOffsetOf(php_ort_devicetensor_object, std));
+        PHP_ORT_OFFSETOF(php_ort_devicetensor_object, std));
 }
 
 static inline php_ort_task_object *php_ort_task_from_obj(
     zend_object *object) {
     return reinterpret_cast<php_ort_task_object *>(
         reinterpret_cast<char *>(object) -
-        XtOffsetOf(php_ort_task_object, std));
+        PHP_ORT_OFFSETOF(php_ort_task_object, std));
 }
 
 typedef struct {
@@ -531,7 +531,7 @@ static void onnx_runtime_free_object(zend_object *object) {
     php_ort_runtime_object *self =
         reinterpret_cast<php_ort_runtime_object *>(
             reinterpret_cast<char *>(object) -
-            XtOffsetOf(php_ort_runtime_object, std));
+            PHP_ORT_OFFSETOF(php_ort_runtime_object, std));
     zend_object_std_dtor(&self->std);
 }
 
@@ -3619,7 +3619,7 @@ PHP_MINIT_FUNCTION(onnxruntime) {
     std::memcpy(&onnx_session_options_handlers, zend_get_std_object_handlers(),
                 sizeof(zend_object_handlers));
     onnx_session_options_handlers.offset =
-        XtOffsetOf(php_ort_session_options_object, std);
+        PHP_ORT_OFFSETOF(php_ort_session_options_object, std);
     onnx_session_options_handlers.free_obj =
         onnx_session_options_free_object;
     onnx_session_options_handlers.clone_obj =
@@ -3635,7 +3635,7 @@ PHP_MINIT_FUNCTION(onnxruntime) {
     std::memcpy(&onnx_epdevice_handlers, zend_get_std_object_handlers(),
                 sizeof(zend_object_handlers));
     onnx_epdevice_handlers.offset =
-        XtOffsetOf(php_ort_epdevice_object, std);
+        PHP_ORT_OFFSETOF(php_ort_epdevice_object, std);
     onnx_epdevice_handlers.free_obj = onnx_epdevice_free_object;
     onnx_epdevice_handlers.clone_obj = onnx_epdevice_clone_object;
     onnx_epdevice_ce->create_object = onnx_epdevice_create_object;
@@ -3646,7 +3646,7 @@ PHP_MINIT_FUNCTION(onnxruntime) {
 
     std::memcpy(&onnx_task_handlers, zend_get_std_object_handlers(),
                 sizeof(zend_object_handlers));
-    onnx_task_handlers.offset = XtOffsetOf(php_ort_task_object, std);
+    onnx_task_handlers.offset = PHP_ORT_OFFSETOF(php_ort_task_object, std);
     onnx_task_handlers.free_obj = onnx_task_free_object;
     onnx_task_handlers.clone_obj = onnx_task_clone_object;
     onnx_task_ce->create_object = onnx_task_create_object;
@@ -3657,7 +3657,7 @@ PHP_MINIT_FUNCTION(onnxruntime) {
 
     std::memcpy(&onnx_runtime_handlers, zend_get_std_object_handlers(),
                 sizeof(zend_object_handlers));
-    onnx_runtime_handlers.offset = XtOffsetOf(php_ort_runtime_object, std);
+    onnx_runtime_handlers.offset = PHP_ORT_OFFSETOF(php_ort_runtime_object, std);
     onnx_runtime_handlers.free_obj = onnx_runtime_free_object;
     onnx_runtime_handlers.clone_obj = onnx_runtime_clone_object;
     onnx_runtime_ce->create_object = onnx_runtime_create_object;
@@ -3668,7 +3668,7 @@ PHP_MINIT_FUNCTION(onnxruntime) {
 
     std::memcpy(&onnx_ortvalue_handlers, zend_get_std_object_handlers(),
                 sizeof(zend_object_handlers));
-    onnx_ortvalue_handlers.offset = XtOffsetOf(php_ort_ortvalue_object, std);
+    onnx_ortvalue_handlers.offset = PHP_ORT_OFFSETOF(php_ort_ortvalue_object, std);
     onnx_ortvalue_handlers.free_obj = onnx_ortvalue_free_object;
     onnx_ortvalue_handlers.clone_obj = onnx_ortvalue_clone_object;
     onnx_ortvalue_handlers.get_gc = onnx_ortvalue_get_gc;
@@ -3682,7 +3682,7 @@ PHP_MINIT_FUNCTION(onnxruntime) {
     std::memcpy(&onnx_devicetensor_handlers, zend_get_std_object_handlers(),
                 sizeof(zend_object_handlers));
     onnx_devicetensor_handlers.offset =
-        XtOffsetOf(php_ort_devicetensor_object, std);
+        PHP_ORT_OFFSETOF(php_ort_devicetensor_object, std);
     onnx_devicetensor_handlers.free_obj = onnx_devicetensor_free_object;
     onnx_devicetensor_handlers.clone_obj = onnx_devicetensor_clone_object;
     onnx_devicetensor_ce->create_object = onnx_devicetensor_create_object;
@@ -3693,7 +3693,7 @@ PHP_MINIT_FUNCTION(onnxruntime) {
 
     std::memcpy(&onnx_tensor_handlers, zend_get_std_object_handlers(),
                 sizeof(zend_object_handlers));
-    onnx_tensor_handlers.offset = XtOffsetOf(php_ort_tensor_object, std);
+    onnx_tensor_handlers.offset = PHP_ORT_OFFSETOF(php_ort_tensor_object, std);
     onnx_tensor_handlers.free_obj = onnx_tensor_free_object;
     onnx_tensor_handlers.clone_obj = onnx_tensor_clone_object;
     onnx_tensor_ce->create_object = onnx_tensor_create_object;
@@ -3704,7 +3704,7 @@ PHP_MINIT_FUNCTION(onnxruntime) {
 
     std::memcpy(&onnx_session_handlers, zend_get_std_object_handlers(),
                 sizeof(zend_object_handlers));
-    onnx_session_handlers.offset = XtOffsetOf(php_ort_session_object, std);
+    onnx_session_handlers.offset = PHP_ORT_OFFSETOF(php_ort_session_object, std);
     onnx_session_handlers.free_obj = onnx_session_free_object;
     onnx_session_handlers.clone_obj = onnx_session_clone_object;
     onnx_session_ce->create_object = onnx_session_create_object;
@@ -3716,7 +3716,7 @@ PHP_MINIT_FUNCTION(onnxruntime) {
 
     std::memcpy(&onnx_iobinding_handlers, zend_get_std_object_handlers(),
                 sizeof(zend_object_handlers));
-    onnx_iobinding_handlers.offset = XtOffsetOf(php_ort_iobinding_object, std);
+    onnx_iobinding_handlers.offset = PHP_ORT_OFFSETOF(php_ort_iobinding_object, std);
     onnx_iobinding_handlers.free_obj = onnx_iobinding_free_object;
     onnx_iobinding_handlers.clone_obj = onnx_iobinding_clone_object;
     onnx_iobinding_ce->create_object = onnx_iobinding_create_object;
