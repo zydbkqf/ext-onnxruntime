@@ -71,7 +71,16 @@ jobs:
         shell: freebsd {0}
         run: |
           set -eux
-          pkg install -y php85 onnxruntime autoconf gmake pkgconf unzip curl bash
+          pkg update -f
+          for attempt in 1 2 3; do
+            if pkg install -y php85 onnxruntime autoconf gmake pkgconf unzip curl bash; then
+              break
+            fi
+            if [ "$attempt" = 3 ]; then
+              exit 1
+            fi
+            sleep 10
+          done
           php -v
           php-config --version
           pkg info php85 onnxruntime | grep -E '^(Name|Version)'
