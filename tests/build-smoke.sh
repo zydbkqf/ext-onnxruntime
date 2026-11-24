@@ -19,6 +19,13 @@ PHP_BIN="${PHP_BIN:-php}"
 JOBS="${JOBS:-8}"
 MODULE="$ROOT/modules/onnxruntime.so"
 
+if ! PHP_BIN_PATH="$(command -v "$PHP_BIN")"; then
+    echo "build-smoke: PHP executable not found: $PHP_BIN" >&2
+    exit 2
+fi
+echo "build-smoke: PHP $("$PHP_BIN_PATH" -r 'echo PHP_VERSION;') at $PHP_BIN_PATH"
+PHP_BIN="$PHP_BIN_PATH"
+
 ORT_ROOT=""
 CONFIGURE_ARGS=()
 
@@ -103,4 +110,4 @@ if ($out["Y"]->toArray() !== [[1.5, 2.5, 3.5], [4.5, 5.5, 6.5]]) {
 echo "build-smoke-ok\n";
 '
 
-NO_INTERACTION=1 make test
+PHP_EXECUTABLE="$PHP_BIN" NO_INTERACTION=1 make test PHP_EXECUTABLE="$PHP_BIN"

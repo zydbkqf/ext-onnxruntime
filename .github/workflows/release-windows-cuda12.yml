@@ -21,4 +21,5 @@ jobs:
       variant: cuda12
       ort-package: microsoft.ml.onnxruntime.gpu.windows
       ort-version: "1.26.0"
+      ort-sha256: "2820b8cca24b7c2817f28aa6ea8774a5c519295caa7447b86d190c7079aabf0f"
       asset-suffix: "-cuda12"

@@ -14,6 +14,10 @@ inputs:
   destination:
     description: Directory that receives include/ and lib/
     required: true
+  sha256:
+    description: Expected SHA-256 of the .nupkg; empty only for custom packages
+    required: false
+    default: ""
 
 runs:
   using: composite
@@ -25,13 +29,28 @@ runs:
         ORT_VERSION: ${{ inputs.version }}
         ORT_RID: ${{ inputs.rid }}
         ORT_DEST: ${{ inputs.destination }}
+        ORT_SHA256: ${{ inputs.sha256 }}
       run: |
         $ErrorActionPreference = "Stop"
         $url = "https://api.nuget.org/v3-flatcontainer/$env:ORT_PACKAGE/$env:ORT_VERSION/$env:ORT_PACKAGE.$env:ORT_VERSION.nupkg"
         $archive = Join-Path $env:RUNNER_TEMP "$env:ORT_PACKAGE-$env:ORT_VERSION.zip"
         $extract = Join-Path $env:RUNNER_TEMP "ort-nuget-$env:ORT_PACKAGE-$env:ORT_VERSION"
 
+        Write-Host "NuGet URL: $url"
         Invoke-WebRequest -Uri $url -OutFile $archive
+
+        $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant()
+        if ($env:ORT_SHA256) {
+          $expected = ($env:ORT_SHA256 -replace '\s', '').ToLowerInvariant()
+          if ($actual -ne $expected) {
+            Remove-Item -LiteralPath $archive -Force
+            throw "SHA-256 mismatch for $env:ORT_PACKAGE $env:ORT_VERSION ($env:ORT_RID): expected $expected, got $actual"
+          }
+          Write-Host "SHA-256 verified: $actual"
+        } else {
+          Write-Warning "No pinned SHA-256 for $env:ORT_PACKAGE $env:ORT_VERSION ($env:ORT_RID); actual digest is $actual"
+        }
+
         Remove-Item -LiteralPath $extract -Recurse -Force -ErrorAction SilentlyContinue
         Expand-Archive -Path $archive -DestinationPath $extract -Force
 
@@ -48,8 +67,11 @@ runs:
           throw "NuGet package $env:ORT_PACKAGE $env:ORT_VERSION contains no onnxruntime.lib for $env:ORT_RID"
         }
 
+        $staging = "$env:ORT_DEST.tmp"
+        Remove-Item -LiteralPath $staging -Recurse -Force -ErrorAction SilentlyContinue
+        New-Item -ItemType Directory -Force -Path (Join-Path $staging "include"), (Join-Path $staging "lib") | Out-Null
+        Copy-Item -Path (Join-Path $headers "*.h") -Destination (Join-Path $staging "include") -Force
+        Copy-Item -Path (Join-Path $libs "*") -Destination (Join-Path $staging "lib") -Force
         Remove-Item -LiteralPath $env:ORT_DEST -Recurse -Force -ErrorAction SilentlyContinue
-        New-Item -ItemType Directory -Force -Path (Join-Path $env:ORT_DEST "include"), (Join-Path $env:ORT_DEST "lib") | Out-Null
-        Copy-Item -Path (Join-Path $headers "*.h") -Destination (Join-Path $env:ORT_DEST "include") -Force
-        Copy-Item -Path (Join-Path $libs "*") -Destination (Join-Path $env:ORT_DEST "lib") -Force
+        Move-Item -LiteralPath $staging -Destination $env:ORT_DEST
         Write-Host "ONNX Runtime $env:ORT_PACKAGE $env:ORT_VERSION ($env:ORT_RID) -> $env:ORT_DEST"

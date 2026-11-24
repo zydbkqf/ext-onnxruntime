@@ -126,6 +126,11 @@ NuGet does not publish ONNX Runtime binaries for FreeBSD.  Pass
   fi
   if test "$PHP_CUDA12" != "no"; then
     ort_pkg=microsoft.ml.onnxruntime.gpu.linux
+    dnl The NuGet GPU package moved from CUDA 12 to CUDA 13 in 1.27.0.
+    dnl 1.26.0 is the last CUDA 12 NuGet build; the CUDA 12.8 builds that
+    dnl ONNX Runtime publishes for 1.27-1.30 are source builds, not this
+    dnl package ID.  Do not "upgrade" this default without changing the
+    dnl runtime requirement to CUDA 13.
     ort_ver="${ONNXRUNTIME_CUDA12_VERSION:-1.26.0}"
   elif test "$PHP_CUDA13" != "no"; then
     ort_pkg=microsoft.ml.onnxruntime.gpu.linux
@@ -133,6 +138,32 @@ NuGet does not publish ONNX Runtime binaries for FreeBSD.  Pass
   else
     ort_pkg=microsoft.ml.onnxruntime
     ort_ver="${ONNXRUNTIME_VERSION:-1.32.0}"
+  fi
+
+  dnl SHA-256 of the downloaded .nupkg.  The pinned values cover the default
+  dnl packages; overrides can supply their own checksum.  If a custom
+  dnl package/version has no trusted checksum, configure prints the actual
+  dnl SHA-256 and warns, but still lets the build continue.
+  ort_sha256=""
+  if test "$PHP_CUDA12" != "no"; then
+    ort_sha256="${ONNXRUNTIME_CUDA12_SHA256:-}"
+  elif test "$PHP_CUDA13" != "no"; then
+    ort_sha256="${ONNXRUNTIME_CUDA13_SHA256:-}"
+  else
+    ort_sha256="${ONNXRUNTIME_SHA256:-}"
+  fi
+  if test -z "$ort_sha256"; then
+    case "$ort_pkg/$ort_ver" in
+      microsoft.ml.onnxruntime/1.32.0)
+        ort_sha256=a9150bc2992cbbb6722070da9910e1ffa989a8bfc67bdd5bb8e745ca755641db
+        ;;
+      microsoft.ml.onnxruntime.gpu.linux/1.32.0)
+        ort_sha256=3d01949bc846d41961b37988d1e63d782a6effcb93b650a6e0577fef982d38b5
+        ;;
+      microsoft.ml.onnxruntime.gpu.linux/1.26.0)
+        ort_sha256=cf7943f58b9360fe1448c4baf40ac12ce4175978ecd3fe6f21a4c00976f63a59
+        ;;
+    esac
   fi
 
   if test "$ort_os" = "darwin"; then
@@ -143,6 +174,21 @@ NuGet does not publish ONNX Runtime binaries for FreeBSD.  Pass
 
   AC_MSG_CHECKING([ONNX Runtime NuGet package])
   AC_MSG_RESULT([$ort_pkg $ort_ver ($ort_rid)])
+
+  dnl Print a SHA-256 digest with whichever tool the platform provides.
+  ort_sha256_file() {
+    if command -v sha256sum >/dev/null 2>&1; then
+      sha256sum "$1" | awk '{print $1}'
+    elif command -v shasum >/dev/null 2>&1; then
+      shasum -a 256 "$1" | awk '{print $1}'
+    elif command -v sha256 >/dev/null 2>&1; then
+      sha256 -q "$1"
+    elif command -v openssl >/dev/null 2>&1; then
+      openssl dgst -sha256 "$1" | sed 's/.*= //'
+    else
+      return 1
+    fi
+  }
 
   dnl Keep the cache outside the source tree: `make clean` runs
   dnl `find . -name '*.so' -delete`, which would otherwise remove the NuGet
@@ -218,6 +264,7 @@ NuGet does not publish ONNX Runtime binaries for FreeBSD.  Pass
     mkdir -p "$ort_tmp"
     ort_url="https://api.nuget.org/v3-flatcontainer/$ort_pkg/$ort_ver/$ort_pkg.$ort_ver.nupkg"
     ort_archive="$ort_tmp/package.nupkg"
+    AC_MSG_NOTICE([NuGet URL: $ort_url])
     if command -v curl >/dev/null 2>&1; then
       if ! curl -fsSL --retry 3 --connect-timeout 30 -o "$ort_archive" "$ort_url"; then
         rm -rf "$ort_tmp"
@@ -232,6 +279,39 @@ NuGet does not publish ONNX Runtime binaries for FreeBSD.  Pass
       rm -rf "$ort_tmp"
       AC_MSG_ERROR([curl or wget is required to download the ONNX Runtime NuGet package])
     fi
+
+    dnl Verify the archive before unpacking.  The final SDK directory is only
+    dnl created by the atomic move below, so a checksum/download/extract failure
+    dnl never leaves a partially populated cache entry.
+    ort_actual_sha256="$(ort_sha256_file "$ort_archive" 2>/dev/null)"
+    if test -z "$ort_actual_sha256"; then
+      if test -n "$ort_sha256"; then
+        rm -rf "$ort_tmp"
+        AC_MSG_ERROR([a SHA-256 tool is required to verify $ort_archive])
+      fi
+      AC_MSG_WARN([no SHA-256 tool found; cannot print the downloaded package digest])
+    else
+      ort_actual_sha256="$(printf '%s' "$ort_actual_sha256" | tr 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' 'abcdefghijklmnopqrstuvwxyz')"
+      if test -n "$ort_sha256"; then
+        ort_expected_sha256="$(printf '%s' "$ort_sha256" | tr -d ' ' | tr 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' 'abcdefghijklmnopqrstuvwxyz')"
+        AC_MSG_CHECKING([NuGet package SHA-256])
+        if test "$ort_actual_sha256" != "$ort_expected_sha256"; then
+          rm -rf "$ort_tmp"
+          AC_MSG_ERROR([
+SHA-256 mismatch for $ort_pkg $ort_ver ($ort_rid).
+expected: $ort_expected_sha256
+actual:   $ort_actual_sha256
+The partial download was removed; no SDK was installed.])
+        fi
+        AC_MSG_RESULT([$ort_actual_sha256])
+      else
+        AC_MSG_WARN([
+No pinned SHA-256 for $ort_pkg $ort_ver ($ort_rid); downloaded digest is
+$ort_actual_sha256.  Set ONNXRUNTIME_SHA256 (or the CUDA12/CUDA13 variant)
+to enable verification for custom package versions.])
+      fi
+    fi
+
     if ! command -v unzip >/dev/null 2>&1; then
       rm -rf "$ort_tmp"
       AC_MSG_ERROR([unzip is required to extract the ONNX Runtime NuGet package])

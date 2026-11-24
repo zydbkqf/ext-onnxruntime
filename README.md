@@ -56,7 +56,7 @@ The PHP code targets the Zend API in PHP 8.0–8.6 and rejects versions below 8.
 
 ### Getting ONNX Runtime
 
-> **Why NuGet instead of GitHub Releases:** since 2025-11-17 Microsoft has made
+> **Why NuGet instead of GitHub Releases:** since 2026-11-17 Microsoft has made
 > `microsoft/onnxruntime`, `onnxruntime-genai`, `onnxruntime-extensions` and
 > related repositories private while it investigates the `agent-framework`
 > supply-chain incident. The official GitHub Release assets that this project
@@ -110,6 +110,11 @@ Footnotes:
   `libcublas.so.<major>` and `libcudnn.so.9`; a missing runtime is a warning
   because build machines often have no GPU driver. Set
   `ONNXRUNTIME_STRICT_CUDA_CHECK=1` to make it fatal.
+- CUDA 12 is pinned to **1.26.0** because that is the last
+  `Microsoft.ML.OnnxRuntime.Gpu.Linux` NuGet package built against CUDA 12.
+  The same package ID switched to CUDA 13 in **1.27.0**; the CUDA 12.8 builds
+  that ONNX Runtime publishes for 1.27–1.30 are source builds, not NuGet
+  binaries. Moving the default would silently require CUDA 13.0 or newer.
 - `--with-coreml` is macOS arm64 only. NuGet's macOS dylib already embeds the
   CoreML EP; the flag asserts platform support and records the requirement.
 - Override the version with `ONNXRUNTIME_VERSION`,
@@ -134,6 +139,38 @@ instructional error. Install `pkg install php85 onnxruntime` and use either
 `./configure --with-onnxruntime` or
 `./configure --with-onnxruntime=/usr/local`; details are in
 `docs/FREEBSD.md`.
+
+### NuGet download integrity
+
+`configure` downloads the `.nupkg` into a temporary directory, verifies its
+SHA-256, and only then unpacks and atomically moves the SDK into the cache.
+A checksum mismatch, download failure, or bad archive removes the temporary
+tree and leaves no partially populated SDK directory. The Windows CI action
+(`.github/actions/fetch-onnxruntime`) performs the same check before
+`Expand-Archive`, and stages the output before replacing the destination
+directory.
+
+Pinned defaults:
+
+| Package | Version | SHA-256 |
+| --- | --- | --- |
+| `Microsoft.ML.OnnxRuntime` (CPU, all RIDs) | 1.32.0 | `a9150bc2992cbbb6722070da9910e1ffa989a8bfc67bdd5bb8e745ca755641db` |
+| `Microsoft.ML.OnnxRuntime.Gpu.Linux` (CUDA 13) | 1.32.0 | `3d01949bc846d41961b37988d1e63d782a6effcb93b650a6e0577fef982d38b5` |
+| `Microsoft.ML.OnnxRuntime.Gpu.Linux` (CUDA 12) | 1.26.0 | `cf7943f58b9360fe1448c4baf40ac12ce4175978ecd3fe6f21a4c00976f63a59` |
+| `Microsoft.ML.OnnxRuntime.Gpu.Windows` (CUDA 13) | 1.32.0 | `485c1af4e5719d7336c2f1cdf6d3342a3fcec88d3bad9621e33a283fff77c4c7` |
+| `Microsoft.ML.OnnxRuntime.Gpu.Windows` (CUDA 12) | 1.26.0 | `2820b8cca24b7c2817f28aa6ea8774a5c519295caa7447b86d190c7079aabf0f` |
+
+For a custom version on Unix, supply the digest with `ONNXRUNTIME_SHA256`,
+`ONNXRUNTIME_CUDA12_SHA256` or `ONNXRUNTIME_CUDA13_SHA256`. On Windows, pass
+`sha256` to the `fetch-onnxruntime` action (the release workflows already do).
+If no digest is known, the build prints the actual SHA-256 and warns instead of
+silently accepting the download.
+
+The cache lives at
+`${XDG_CACHE_HOME:-$HOME/.cache}/ext-onnxruntime/nuget/<package>.<version>/`,
+outside the source tree, so `make clean` does not delete it. For a fully offline
+build, point `--with-onnxruntime` at an unpacked SDK; that path never downloads
+or verifies a NuGet archive.
 
 Distribution development packages and their current versions:
 

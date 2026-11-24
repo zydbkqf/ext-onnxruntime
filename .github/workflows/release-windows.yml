@@ -50,6 +50,7 @@ jobs:
         with:
           package: microsoft.ml.onnxruntime
           version: "1.32.0"
+          sha256: a9150bc2992cbbb6722070da9910e1ffa989a8bfc67bdd5bb8e745ca755641db
           rid: win-x64
           destination: ${{ github.workspace }}/ort/sdk
 
@@ -83,6 +84,7 @@ jobs:
         with:
           package: microsoft.ml.onnxruntime
           version: "1.32.0"
+          sha256: a9150bc2992cbbb6722070da9910e1ffa989a8bfc67bdd5bb8e745ca755641db
           rid: win-x64
           destination: ${{ github.workspace }}/ort/sdk
 
