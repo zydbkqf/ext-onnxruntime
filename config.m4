@@ -49,8 +49,11 @@ case "$host_os" in
   linux*)
     ort_os=linux
     ;;
+  freebsd*)
+    ort_os=freebsd
+    ;;
   *)
-    AC_MSG_ERROR([ONNX Runtime builds are supported on Linux and macOS only; use config.w32 on Windows])
+    AC_MSG_ERROR([ONNX Runtime builds are supported on Linux, macOS and FreeBSD only; use config.w32 on Windows])
     ;;
 esac
 
@@ -115,6 +118,12 @@ esac
 
 dnl ------------------------------------------------------------------- NuGet
 if test "$ort_source" = "nuget"; then
+  if test "$ort_os" = "freebsd"; then
+    AC_MSG_ERROR([
+NuGet does not publish ONNX Runtime binaries for FreeBSD.  Pass
+--with-onnxruntime=DIR (for example --with-onnxruntime=/usr/local) or a bare
+--with-onnxruntime to use the system package.])
+  fi
   if test "$PHP_CUDA12" != "no"; then
     ort_pkg=microsoft.ml.onnxruntime.gpu.linux
     ort_ver="${ONNXRUNTIME_CUDA12_VERSION:-1.26.0}"
@@ -274,7 +283,7 @@ if test "$ort_source" = "dir"; then
     AC_MSG_ERROR([ONNX Runtime SDK directory does not exist: $ort_root])
   fi
   AC_MSG_CHECKING([for ONNX Runtime headers])
-  for ort_candidate in "$ort_root/include" "$ort_root"; do
+  for ort_candidate in "$ort_root/include" "$ort_root/include/onnxruntime" "$ort_root"; do
     if test -f "$ort_candidate/onnxruntime_cxx_api.h"; then
       ort_include_dir="$ort_candidate"
       break
@@ -437,6 +446,17 @@ fi
 if test -n "$ort_rpath"; then
   ONNXRUNTIME_SHARED_LIBADD="$ONNXRUNTIME_SHARED_LIBADD -Wl,-rpath,$ort_rpath"
 fi
+
+dnl FreeBSD unloads the extension at process shutdown, then libc reports
+dnl "__cxa_thread_call_dtors: dtr ... from unloaded dso, skipping" for the
+dnl thread_local destructors that ONNX Runtime registered.  Mark the module
+dnl NODELETE on FreeBSD so those destructors stay valid.  This only affects
+dnl FreeBSD; Linux and macOS keep their normal unload behaviour.
+case "$host_os" in
+  freebsd*)
+    LDFLAGS="$LDFLAGS -Wl,-z,nodelete"
+    ;;
+esac
 PHP_SUBST([ONNXRUNTIME_SHARED_LIBADD])
 
 dnl --------------------------------------------- CUDA / CoreML capability checks

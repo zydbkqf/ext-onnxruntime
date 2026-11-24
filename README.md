@@ -34,15 +34,16 @@ When no EP is appended, ORT defaults are preserved; this project does not promis
 | Linux x86_64 | 8.5.12 | NTS | Verified: 33/35 PHPT, 2 platform skips (CoreML, Windows CUDA); CUDA built-in EP runs inference with the ORT 1.28.2 CUDA 13 GPU package; new `--with-onnxruntime=DIR` build path |
 | Linux x86_64 | 8.5.12 | ZTS | Verified: 33/35 PHPT, 2 platform skips (CoreML, Windows CUDA); CUDA built-in EP runs inference with the ORT 1.28.2 CUDA 13 GPU package; async ASan+LSan passed; Swoole 6.2.1 Fiber/coroutine/process/thread, `pcntl_fork`, `parallel` |
 | Linux arm64 | 8.5.12 | NTS/ZTS | Verified: 33/35 PHPT, 2 platform skips (CoreML, Windows CUDA); ORT 1.28.2 aarch64 CPU SDK; PHPT needs the cpuinfo-warning filter described below |
+| FreeBSD 14.5 x86_64 | 8.5.12 | NTS | Verified: 34/37 PHPT, 3 platform skips (CoreML, Windows CUDA, no CUDA/TensorRT provider); ORT 1.30.0 pkg; PHPT needs the stderr filter in `docs/FREEBSD.md` |
 | Windows x86_64 | 8.5.12 | NTS/ZTS | Verified: 35/36 PHPT, 1 CoreML platform skip; `034`/`035` CPU+CUDA async binding; native I/O Binding stress; CUDA Plugin EP smoke; CUDA and TensorRT inference via `appendExecutionProvider()` on the NVIDIA GPU |
 
-The PHP code targets the Zend API in PHP 8.0–8.6 and rejects versions below 8.0 at compile time. Verified environments: macOS arm64 PHP 8.5.6 ZTS, PHP 8.5.12 NTS (Homebrew) and PHP 8.6.0 ZTS; Linux x86_64 PHP 8.5.12 NTS and ZTS (current feature set, Swoole 6.2.1 on ZTS), and the same two builds against the ORT 1.28.2 CUDA 13 GPU package, where the built-in CUDA EP runs inference; Linux arm64 PHP 8.5.12 NTS and ZTS (ORT 1.28.2 aarch64 CPU SDK, source-built PHP); Windows x86_64 PHP 8.5.12 ZTS and NTS with VS 2026 + MSVC 14.44 and ORT 1.28.2, including CUDA and TensorRT inference on an RTX 3050. On Linux arm64 the ORT prebuilt library prints an `cpuid_info` warning on stderr, so PHPT must be run through a wrapper that filters that line — see `docs/LINUX-ARM64-BASELINE.md`; without it every test fails on output mismatch, not on behaviour. Debug builds and other unlisted combinations are not claimed as supported. `phpize`/`php-config` determine the ZTS/NTS and Debug/Release configuration; the resulting module must be installed into the extension_dir of the same PHP build and loaded by that same `php` binary.
+The PHP code targets the Zend API in PHP 8.0–8.6 and rejects versions below 8.0 at compile time. Verified environments: macOS arm64 PHP 8.5.6 ZTS, PHP 8.5.12 NTS (Homebrew) and PHP 8.6.0 ZTS; Linux x86_64 PHP 8.5.12 NTS and ZTS (current feature set, Swoole 6.2.1 on ZTS), and the same two builds against the ORT 1.28.2 CUDA 13 GPU package, where the built-in CUDA EP runs inference; Linux arm64 PHP 8.5.12 NTS and ZTS (ORT 1.28.2 aarch64 CPU SDK, source-built PHP); Windows x86_64 PHP 8.5.12 ZTS and NTS with VS 2026 + MSVC 14.44 and ORT 1.28.2, including CUDA and TensorRT inference on an RTX 3050; FreeBSD 14.5 x86_64 PHP 8.5.12 NTS with the `onnxruntime` 1.30.0 package (CPU only; see `docs/FREEBSD.md`). On Linux arm64 and FreeBSD the ORT prebuilt library prints a `cpuid_info` warning on stderr, so PHPT must be run through a wrapper that filters that line — see `docs/LINUX-ARM64-BASELINE.md` and `docs/FREEBSD.md`; without it every test fails on output mismatch, not on behaviour. Debug builds and other unlisted combinations are not claimed as supported. `phpize`/`php-config` determine the ZTS/NTS and Debug/Release configuration; the resulting module must be installed into the extension_dir of the same PHP build and loaded by that same `php` binary.
 
 ## Requirements
 
 - PHP 8.x; verified with PHP 8.5.6 CLI ZTS, PHP 8.5.12 CLI NTS (Zend Module API `20250925`) and PHP 8.6.0 CLI ZTS (Zend Module API `20261112`)
 - `phpize` / `php-config` from the same PHP installation that will load the extension
-- A C++17 compiler (Apple clang on macOS; g++/clang++ on Linux)
+- A C++17 compiler (Apple clang on macOS; g++/clang++ on Linux; base clang on FreeBSD)
 - ONNX Runtime **1.18.0 or newer** for the core build (`ORT_API_VERSION >= 18`);
   1.32.0 is the current default. The core surface is verified against 1.18, 1.20,
   1.21, 1.23, 1.26 and 1.32. 1.17 and older are rejected by `config.m4` and
@@ -128,12 +129,19 @@ already-unpacked SDK root. The bare `--with-onnxruntime` searches
 `pkg-config onnxruntime`, `/usr/include/onnxruntime`, `/usr/local/include`,
 `/opt/homebrew/include` and the usual library directories.
 
+FreeBSD has no NuGet RID, so the default NuGet mode intentionally fails with an
+instructional error. Install `pkg install php85 onnxruntime` and use either
+`./configure --with-onnxruntime` or
+`./configure --with-onnxruntime=/usr/local`; details are in
+`docs/FREEBSD.md`.
+
 Distribution development packages and their current versions:
 
 | Source | Package | Version | Core build | EP devices / CoreML |
 | --- | --- | --- | --- | --- |
 | apt (Debian 13 trixie) | `libonnxruntime-dev` | **1.21.0** | Yes | No (needs 1.23) |
 | dnf (Fedora 44) | `onnxruntime-devel` | **1.22.2** | Yes | No (needs 1.23) |
+| pkg (FreeBSD 14.5) | `onnxruntime` | **1.30.0** | Yes | Yes / no CoreML |
 | Homebrew (macOS arm64) | `onnxruntime` | **1.32.0** | Yes | Yes |
 | NuGet (`Microsoft.ML.OnnxRuntime`) | flat-container package | 1.18.0 – 1.32.0 | Yes | 1.23.2+ only |
 
@@ -503,11 +511,11 @@ Use `runAsync()` / `runWithBindingAsync()` only when the PHP process can wait fo
 | `setLogSeverityLevel(int|string $level)` | `0..4` or `verbose` / `info` / `warning` / `error` / `fatal`; default `2` / `warning` |
 | `setEnableCpuMemArena(bool $enable)` | Default `true` |
 | `setEnableMemPattern(bool $enable)` | Default `true` |
-| `appendExecutionProvider(string $name, array $options = [])` | Built-in EP path: append a provider such as `CoreML`, `CUDA` or `TensorRT`; options are string -> string |
+| `appendExecutionProvider(string $name, array $options = [])` | Built-in EP path: append a provider such as `CoreML`, `CUDA` or `TensorRT`; on ORT 1.23+, a name that matches an `Runtime::getEpDevices()` entry (case-insensitive, `ExecutionProvider`/`EP` suffix optional) is routed through the V2 device API instead; options are string -> string |
 | `appendEpDevice(OnnxRuntime\EpDevice $device, array $options = [])` | Device path: append a device from `Runtime::getEpDevices()` using `SessionOptionsAppendExecutionProvider_V2`; options are string -> string |
 | `toArray(): array` | Return the current configuration snapshot, including `intraOpNumThreads`, `graphOptimizationLevel`, `executionProviders`, and `epDevices` |
 
-`SessionOptions` is final, supports deep-copy clone, and disallows dynamic properties. Configuration applies only to Sessions created afterward; existing Sessions are unaffected by later setters. Built-in and device entries keep their append order. If neither method is called, no EP is appended and ORT defaults are preserved. CoreML is available on macOS, but the extension does not select it automatically. `appendEpDevice()` rejects an object that is not an `EpDevice` and fails early if the device is no longer present in the Env. `toArray()` reports built-in entries under `executionProviders` and device entries under `epDevices` so the two mechanisms stay distinguishable.
+`SessionOptions` is final, supports deep-copy clone, and disallows dynamic properties. Configuration applies only to Sessions created afterward; existing Sessions are unaffected by later setters. Built-in and device entries keep their append order. If neither method is called, no EP is appended and ORT defaults are preserved. On ORT 1.23+, `appendExecutionProvider()` falls back to the first matching `EpDevice` when ORT's case-sensitive name appender would reject the name; this makes `appendExecutionProvider('cpu')` and vendor short names work, and keeps plugin devices lease-protected. Provider names with multiple devices should use `appendEpDevice()` to select one explicitly. CoreML is available on macOS, but the extension does not select it automatically. `appendEpDevice()` rejects an object that is not an `EpDevice` and fails early if the device is no longer present in the Env. `toArray()` reports built-in entries under `executionProviders` and device entries under `epDevices` so the two mechanisms stay distinguishable; the fallback is applied to a Session's private copy and does not rewrite the user's `SessionOptions` snapshot.
 
 ### Runtime
 
@@ -596,7 +604,7 @@ Full PHPT suite:
 NO_INTERACTION=1 make test
 ```
 
-macOS: 34/35 passed, 1 Windows-CUDA skip (`033`). Windows PHP 8.5.12 ZTS: 34/35 passed, 1 CoreML skip (`025`), including `034`/`035` on both CPU and CUDA. Linux x86_64 PHP 8.5.12 ZTS (Docker `php:8.5-zts`): 33/35 passed, 2 platform skips (CoreML `025`, Windows CUDA `033`), including `034`/`035`; `tests/run-async-sanitizers.sh` passed with ASan+LSan and `native-async-stress-ok`. Linux x86_64 PHP 8.5.12 NTS (Docker `php:8.5-cli`): 33/35 passed, the same 2 platform skips, built with `--with-onnxruntime=/opt/ort`. CPU I/O Binding ASan+LSan also passed; Fiber, 8 coroutines, Swoole process, 4 Swoole threads, `pcntl_fork`, and 4 `parallel` runtimes passed. CPU I/O Binding has a native ASan stress gate:
+macOS: 35/37 passed, 2 platform skips (Windows CUDA `033`, no CUDA/TensorRT `036`). Windows PHP 8.5.12 ZTS: 34/35 passed, 1 CoreML skip (`025`), including `034`/`035` on both CPU and CUDA. FreeBSD 14.5 PHP 8.5.12 NTS with ORT 1.30.0: 34/37 passed, 3 platform skips (CoreML `025`, Windows CUDA `033`, no CUDA/TensorRT `036`); the `cpuid_info` line requires the filter documented in `docs/FREEBSD.md`. Linux x86_64 PHP 8.5.12 ZTS (Docker `php:8.5-zts`): 33/35 passed, 2 platform skips (CoreML `025`, Windows CUDA `033`), including `034`/`035`; `tests/run-async-sanitizers.sh` passed with ASan+LSan and `native-async-stress-ok`. Linux x86_64 PHP 8.5.12 NTS (Docker `php:8.5-cli`): 33/35 passed, the same 2 platform skips, built with `--with-onnxruntime=/opt/ort`. CPU I/O Binding ASan+LSan also passed; Fiber, 8 coroutines, Swoole process, 4 Swoole threads, `pcntl_fork`, and 4 `parallel` runtimes passed. CPU I/O Binding has a native ASan stress gate:
 
 ```bash
 bash tests/run-io-binding-sanitizers.sh
@@ -661,7 +669,7 @@ tests/
   run-sanitizers.sh        # Native Tensor ASan/LSan/Valgrind
   run-async-sanitizers.sh  # Native AsyncEngine ASan
   run-io-binding-sanitizers.sh # Native I/O Binding ASan/LSan
-  *.phpt                   # 35 PHPT tests
+  *.phpt                   # 37 PHPT tests
   fixtures/                # Local ONNX models
 benchmarks/
   fastembed_int8_bpe.py    # FastEmbed vs raw ORT vs PHP ORT/tokenize+ORT

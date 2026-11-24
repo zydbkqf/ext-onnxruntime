@@ -53,6 +53,18 @@ struct SessionConfig {
     void applyTo(Ort::SessionOptions &options, Ort::Env &env) const;
 };
 
+/**
+ * Rewrite built-in entries that name a device-backed EP into EpDevice entries.
+ *
+ * Older and plugin providers are often only reachable through
+ * SessionOptionsAppendExecutionProvider_V2, while ORT's name-based appender
+ * accepts a narrower, case-sensitive set.  This lets
+ * `appendExecutionProvider('cpu', ...)` or a vendor short name resolve to the
+ * matching Env device when one is enumerated.  CUDA, TensorRT and CoreML keep
+ * their dedicated paths.  Runs only on ONNX Runtime 1.23+; otherwise no-op.
+ */
+void resolveExecutionProviderDevices(SessionConfig &config, Ort::Env &env);
+
 }  // namespace php_ort
 
 #endif  // PHP_ORT_SESSION_OPTIONS_H

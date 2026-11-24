@@ -70,4 +70,5 @@
 /third_party/nuget
 /docs/*
 !/docs/LINUX-ARM64-BASELINE.md
+!/docs/FREEBSD.md
 /.ort-sdk-include

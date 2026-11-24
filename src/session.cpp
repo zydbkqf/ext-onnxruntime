@@ -147,10 +147,21 @@ SessionState::SessionState(const std::string &model_path,
     : env(environment()), session(nullptr) {
     ensureRuntimeAcceptingWork();
 
+    // Resolve built-in names that are only reachable through the V2 device
+    // API before taking leases, so a plugin-backed device cannot be unloaded
+    // between resolution and Ort::Session creation.
+    SessionConfig resolved;
+    const SessionConfig *effective = config;
     if (config != nullptr) {
+        resolved = *config;
+        resolveExecutionProviderDevices(resolved, *env);
+        effective = &resolved;
+    }
+
+    if (effective != nullptr) {
         std::vector<EpDeviceInfo> devices;
         for (const ExecutionProviderConfig &provider :
-             config->execution_providers) {
+             effective->execution_providers) {
             if (provider.kind == ExecutionProviderKind::EpDevice) {
                 devices.push_back(provider.device);
             }
@@ -163,8 +174,8 @@ SessionState::SessionState(const std::string &model_path,
     }
 
     Ort::SessionOptions options;
-    if (config != nullptr) {
-        config->applyTo(options, *env);
+    if (effective != nullptr) {
+        effective->applyTo(options, *env);
     }
 #ifdef _WIN32
     session = Ort::Session(*env, toWidePath(model_path).c_str(), options);

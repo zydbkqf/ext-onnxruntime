@@ -36,6 +36,39 @@ bool isTensorRtProviderName(const std::string &name) {
     return lower == "tensorrt" || lower == "tensorrtexecutionprovider";
 }
 
+bool isCoreMlProviderName(const std::string &name) {
+    const std::string lower = lowerName(name);
+    return lower == "coreml" || lower == "coremlexecutionprovider";
+}
+
+#if PHP_ORT_HAS_EP_DEVICE
+std::string canonicalProviderName(const std::string &name) {
+    std::string canonical;
+    canonical.reserve(name.size());
+    for (unsigned char c : name) {
+        if (std::isalnum(c)) {
+            canonical.push_back(static_cast<char>(std::tolower(c)));
+        }
+    }
+
+    static const std::string suffix = "executionprovider";
+    if (canonical.size() >= suffix.size() &&
+        canonical.compare(canonical.size() - suffix.size(), suffix.size(), suffix) == 0) {
+        canonical.erase(canonical.size() - suffix.size());
+    }
+    if (canonical.size() > 2 &&
+        canonical.compare(canonical.size() - 2, 2, "ep") == 0) {
+        canonical.erase(canonical.size() - 2);
+    }
+    if (canonical == "directml") {
+        canonical = "dml";
+    } else if (canonical == "onednn") {
+        canonical = "dnnl";
+    }
+    return canonical;
+}
+#endif
+
 void appendCudaProvider(Ort::SessionOptions &options,
                         const ExecutionProviderConfig &provider) {
     OrtCUDAProviderOptionsV2 *cuda_options = nullptr;
@@ -100,6 +133,62 @@ ExecutionMode executionModeFromName(const std::string &name) {
 
 }  // namespace
 
+void resolveExecutionProviderDevices(SessionConfig &config, Ort::Env &env) {
+#if PHP_ORT_HAS_EP_DEVICE
+    bool has_device_candidate = false;
+    for (const ExecutionProviderConfig &provider : config.execution_providers) {
+        if (provider.kind != ExecutionProviderKind::Builtin) {
+            continue;
+        }
+        if (isCudaProviderName(provider.name) ||
+            isTensorRtProviderName(provider.name) ||
+            isCoreMlProviderName(provider.name)) {
+            continue;
+        }
+        has_device_candidate = true;
+        break;
+    }
+    if (!has_device_candidate) {
+        return;
+    }
+
+    const std::vector<EpDeviceInfo> devices = readEpDevices(env);
+    if (devices.empty()) {
+        return;
+    }
+
+    for (ExecutionProviderConfig &provider : config.execution_providers) {
+        if (provider.kind != ExecutionProviderKind::Builtin) {
+            continue;
+        }
+        if (isCudaProviderName(provider.name) ||
+            isTensorRtProviderName(provider.name) ||
+            isCoreMlProviderName(provider.name)) {
+            continue;
+        }
+
+        const std::string wanted = canonicalProviderName(provider.name);
+        if (wanted.empty()) {
+            continue;
+        }
+        for (const EpDeviceInfo &device : devices) {
+            if (canonicalProviderName(device.ep_name) != wanted) {
+                continue;
+            }
+            // The first matching device in ORT enumeration order wins.  A
+            // provider with several devices should use appendEpDevice() so
+            // the caller can select one explicitly.
+            provider.kind = ExecutionProviderKind::EpDevice;
+            provider.device = device;
+            break;
+        }
+    }
+#else
+    (void)config;
+    (void)env;
+#endif
+}
+
 void SessionConfig::applyTo(Ort::SessionOptions &options,
                             Ort::Env &env) const {
     // 0 means "leave ORT's default thread-pool sizing in place".
@@ -136,14 +225,14 @@ void SessionConfig::applyTo(Ort::SessionOptions &options,
                 appendTensorRtProvider(options, provider);
                 continue;
             }
-            if (provider.name == "CoreML") {
+            if (isCoreMlProviderName(provider.name)) {
 #if ORT_API_VERSION < 23
                 throw ConversionError(
                     "the CoreML execution provider requires an ONNX Runtime "
                     "1.23 or newer SDK (this build targets API " +
                     std::to_string(ORT_API_VERSION) + ")");
 #else
-                options.AppendExecutionProvider(provider.name, provider.options);
+                options.AppendExecutionProvider("CoreML", provider.options);
                 continue;
 #endif
             }
