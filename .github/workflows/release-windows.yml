@@ -28,7 +28,7 @@ jobs:
         id: extension-matrix
         uses: php/php-windows-builder/extension-matrix@v1
         with:
-          php-version-list: "8.0, 8.1, 8.2, 8.3, 8.4, 8.5"
+          php-version-list: "8.0, 8.1, 8.2, 8.3, 8.4, 8.5, 8.6"
           arch-list: "x64"
           ts-list: "nts, ts"
 
@@ -45,12 +45,13 @@ jobs:
         with:
           ref: ${{ env.RELEASE_TAG }}
 
-      - name: Download ONNX Runtime SDK
-        shell: pwsh
-        run: |
-          $zip = Join-Path $env:RUNNER_TEMP "onnxruntime.zip"
-          Invoke-WebRequest -Uri "https://github.com/microsoft/onnxruntime/releases/download/v1.28.2/onnxruntime-win-x64-1.28.2.zip" -OutFile $zip
-          Expand-Archive -Path $zip -DestinationPath (Join-Path $env:GITHUB_WORKSPACE "ort") -Force
+      - name: Fetch ONNX Runtime SDK from NuGet
+        uses: ./.github/actions/fetch-onnxruntime
+        with:
+          package: microsoft.ml.onnxruntime
+          version: "1.32.0"
+          rid: win-x64
+          destination: ${{ github.workspace }}/ort/sdk
 
       - name: Build the extension
         uses: php/php-windows-builder/extension@v1
@@ -59,7 +60,7 @@ jobs:
           arch: ${{ matrix.arch }}
           ts: ${{ matrix.ts }}
           extension-ref: ${{ env.RELEASE_TAG }}
-          args: --with-onnxruntime=${{ github.workspace }}\ort\onnxruntime-win-x64-1.28.2
+          args: --with-onnxruntime=${{ github.workspace }}\ort\sdk
           run-tests: false
 
   release:
@@ -68,24 +69,29 @@ jobs:
     env:
       RELEASE_TAG: ${{ github.event.release.tag_name || github.event.inputs.tag }}
     steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+
       - uses: actions/download-artifact@v5
         with:
           path: artifacts
           merge-multiple: true
 
-      - name: Download ONNX Runtime runtime DLL
-        shell: pwsh
-        run: |
-          $zip = Join-Path $env:RUNNER_TEMP "onnxruntime.zip"
-          Invoke-WebRequest -Uri "https://github.com/microsoft/onnxruntime/releases/download/v1.28.2/onnxruntime-win-x64-1.28.2.zip" -OutFile $zip
-          Expand-Archive -Path $zip -DestinationPath (Join-Path $env:GITHUB_WORKSPACE "ort") -Force
+      - name: Fetch ONNX Runtime runtime DLL from NuGet
+        uses: ./.github/actions/fetch-onnxruntime
+        with:
+          package: microsoft.ml.onnxruntime
+          version: "1.32.0"
+          rid: win-x64
+          destination: ${{ github.workspace }}/ort/sdk
 
       - name: Add onnxruntime.dll to the PIE zips
         shell: pwsh
         run: |
           Add-Type -AssemblyName System.IO.Compression
           Add-Type -AssemblyName System.IO.Compression.FileSystem
-          $dll = Join-Path $env:GITHUB_WORKSPACE "ort\onnxruntime-win-x64-1.28.2\lib\onnxruntime.dll"
+          $dll = Join-Path $env:GITHUB_WORKSPACE "ort/sdk/lib/onnxruntime.dll"
           if (-not (Test-Path -LiteralPath $dll)) {
             throw "onnxruntime.dll not found in the SDK"
           }

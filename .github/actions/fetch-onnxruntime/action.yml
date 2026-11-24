@@ -1,0 +1,55 @@
+name: fetch-onnxruntime
+description: Download an ONNX Runtime NuGet package and lay it out as include/ + lib/
+
+inputs:
+  package:
+    description: NuGet package id, for example microsoft.ml.onnxruntime
+    required: true
+  version:
+    description: NuGet package version
+    required: true
+  rid:
+    description: NuGet runtime identifier, for example win-x64
+    required: true
+  destination:
+    description: Directory that receives include/ and lib/
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Download and unpack the NuGet package
+      shell: pwsh
+      env:
+        ORT_PACKAGE: ${{ inputs.package }}
+        ORT_VERSION: ${{ inputs.version }}
+        ORT_RID: ${{ inputs.rid }}
+        ORT_DEST: ${{ inputs.destination }}
+      run: |
+        $ErrorActionPreference = "Stop"
+        $url = "https://api.nuget.org/v3-flatcontainer/$env:ORT_PACKAGE/$env:ORT_VERSION/$env:ORT_PACKAGE.$env:ORT_VERSION.nupkg"
+        $archive = Join-Path $env:RUNNER_TEMP "$env:ORT_PACKAGE-$env:ORT_VERSION.zip"
+        $extract = Join-Path $env:RUNNER_TEMP "ort-nuget-$env:ORT_PACKAGE-$env:ORT_VERSION"
+
+        Invoke-WebRequest -Uri $url -OutFile $archive
+        Remove-Item -LiteralPath $extract -Recurse -Force -ErrorAction SilentlyContinue
+        Expand-Archive -Path $archive -DestinationPath $extract -Force
+
+        $headers = @(
+          (Join-Path $extract "buildTransitive/native/include"),
+          (Join-Path $extract "build/native/include")
+        ) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+        if (-not $headers) {
+          throw "NuGet package $env:ORT_PACKAGE $env:ORT_VERSION contains no native headers"
+        }
+
+        $libs = Join-Path $extract "runtimes/$env:ORT_RID/native"
+        if (-not (Test-Path -LiteralPath (Join-Path $libs "onnxruntime.lib"))) {
+          throw "NuGet package $env:ORT_PACKAGE $env:ORT_VERSION contains no onnxruntime.lib for $env:ORT_RID"
+        }
+
+        Remove-Item -LiteralPath $env:ORT_DEST -Recurse -Force -ErrorAction SilentlyContinue
+        New-Item -ItemType Directory -Force -Path (Join-Path $env:ORT_DEST "include"), (Join-Path $env:ORT_DEST "lib") | Out-Null
+        Copy-Item -Path (Join-Path $headers "*.h") -Destination (Join-Path $env:ORT_DEST "include") -Force
+        Copy-Item -Path (Join-Path $libs "*") -Destination (Join-Path $env:ORT_DEST "lib") -Force
+        Write-Host "ONNX Runtime $env:ORT_PACKAGE $env:ORT_VERSION ($env:ORT_RID) -> $env:ORT_DEST"

@@ -19,6 +19,6 @@ jobs:
     with:
       tag: ${{ github.event.release.tag_name || github.event.inputs.tag }}
       variant: cuda12
-      ort-asset: onnxruntime-win-x64-gpu_cuda12-1.28.2.zip
-      ort-dir: onnxruntime-win-x64-gpu_cuda12-1.28.2
+      ort-package: microsoft.ml.onnxruntime.gpu.windows
+      ort-version: "1.26.0"
       asset-suffix: "-cuda12"

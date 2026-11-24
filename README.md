@@ -189,19 +189,22 @@ tree. The repository therefore ships `config.w32`.
 
 Prerequisites:
 
-- PHP 8.5 x64 **ZTS** runtime, plus the matching PHP SDK build environment
+- PHP 8.5/8.6 x64 **ZTS** runtime, plus the matching PHP SDK build environment
 - Visual Studio C++ toolset and Windows SDK. PHP's Windows build scripts are
   normally validated with the VS 2022 toolchain; a VS 2026-only installation
   must still provide a compatible MSVC/Windows SDK setup.
 - ONNX Runtime **Windows x64** SDK containing `include\onnxruntime_cxx_api.h`
-  and `lib\onnxruntime.lib`
+  and `lib\onnxruntime.lib`; 1.18+ compiles, 1.23+ enables the EP-device API
 
-The Windows SDK root is passed as the same configure option.  Windows builds do
-not download NuGet automatically; if you start from a `.nupkg`, copy
+The Windows SDK root is passed as the same configure option. `config.w32`
+itself does not download NuGet: if you start from a `.nupkg`, copy
 `buildTransitive/native/include/*.h` (or `build/native/include/*.h`) into
-`include\` and `runtimes/win-x64/native/*` into `lib\` first.  Use
-`Microsoft.ML.OnnxRuntime.Gpu.Windows` for CUDA/TensorRT (1.26.0 = CUDA 12,
-1.27+ = CUDA 13) or `Microsoft.ML.OnnxRuntime` for CPU.
+`include\` and `runtimes/win-x64/native/*` into `lib\` first. The release
+workflows do this automatically through
+`.github/actions/fetch-onnxruntime`, assembling `ort\sdk\include` and
+`ort\sdk\lib` from `Microsoft.ML.OnnxRuntime` (CPU) or
+`Microsoft.ML.OnnxRuntime.Gpu.Windows` (CUDA/TensorRT; 1.26.0 = CUDA 12 +
+TensorRT 10, 1.32.0 = CUDA 13 + TensorRT 10).
 
 `config.w32` checks those paths and links only `onnxruntime.lib`. GPU provider
 DLLs (`onnxruntime_providers_cuda.dll`, `onnxruntime_providers_shared.dll`,

@@ -11,12 +11,12 @@ on:
         description: "Runtime variant name, for example cuda12"
         required: true
         type: string
-      ort-asset:
-        description: "ONNX Runtime Windows ZIP asset name"
+      ort-package:
+        description: "ONNX Runtime NuGet package id"
         required: true
         type: string
-      ort-dir:
-        description: "Directory extracted from the ONNX Runtime ZIP"
+      ort-version:
+        description: "ONNX Runtime NuGet package version"
         required: true
         type: string
       asset-suffix:
@@ -43,7 +43,7 @@ jobs:
         id: extension-matrix
         uses: php/php-windows-builder/extension-matrix@v1
         with:
-          php-version-list: "8.0, 8.1, 8.2, 8.3, 8.4, 8.5"
+          php-version-list: "8.0, 8.1, 8.2, 8.3, 8.4, 8.5, 8.6"
           arch-list: "x64"
           ts-list: "nts, ts"
 
@@ -61,12 +61,13 @@ jobs:
         with:
           ref: ${{ inputs.tag }}
 
-      - name: Download ONNX Runtime SDK
-        shell: pwsh
-        run: |
-          $zip = Join-Path $env:RUNNER_TEMP "onnxruntime.zip"
-          Invoke-WebRequest -Uri "https://github.com/microsoft/onnxruntime/releases/download/v1.28.2/${{ inputs.ort-asset }}" -OutFile $zip
-          Expand-Archive -Path $zip -DestinationPath (Join-Path $env:GITHUB_WORKSPACE "ort") -Force
+      - name: Fetch ONNX Runtime SDK from NuGet
+        uses: ./.github/actions/fetch-onnxruntime
+        with:
+          package: ${{ inputs.ort-package }}
+          version: ${{ inputs.ort-version }}
+          rid: win-x64
+          destination: ${{ github.workspace }}/ort/sdk
 
       - name: Build the extension
         uses: php/php-windows-builder/extension@v1
@@ -75,7 +76,7 @@ jobs:
           arch: ${{ matrix.arch }}
           ts: ${{ matrix.ts }}
           extension-ref: ${{ inputs.tag }}
-          args: --with-onnxruntime=${{ github.workspace }}\ort\${{ inputs.ort-dir }}
+          args: --with-onnxruntime=${{ github.workspace }}\ort\sdk
           run-tests: false
 
   release:
@@ -85,6 +86,10 @@ jobs:
       RELEASE_TAG: ${{ inputs.tag }}
       VARIANT: ${{ inputs.variant }}
     steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.tag }}
+
       - uses: actions/download-artifact@v5
         with:
           path: artifacts
@@ -99,19 +104,20 @@ jobs:
             Move-Item -LiteralPath $_.FullName -Destination $target -Force
           }
 
-      - name: Download ONNX Runtime runtime DLLs
-        shell: pwsh
-        run: |
-          $zip = Join-Path $env:RUNNER_TEMP "onnxruntime.zip"
-          Invoke-WebRequest -Uri "https://github.com/microsoft/onnxruntime/releases/download/v1.28.2/${{ inputs.ort-asset }}" -OutFile $zip
-          Expand-Archive -Path $zip -DestinationPath (Join-Path $env:GITHUB_WORKSPACE "ort") -Force
+      - name: Fetch ONNX Runtime runtime DLLs from NuGet
+        uses: ./.github/actions/fetch-onnxruntime
+        with:
+          package: ${{ inputs.ort-package }}
+          version: ${{ inputs.ort-version }}
+          rid: win-x64
+          destination: ${{ github.workspace }}/ort/sdk
 
       - name: Add runtime DLLs to the PIE zips
         shell: pwsh
         run: |
           Add-Type -AssemblyName System.IO.Compression
           Add-Type -AssemblyName System.IO.Compression.FileSystem
-          $libDir = Join-Path $env:GITHUB_WORKSPACE "ort\${{ inputs.ort-dir }}\lib"
+          $libDir = Join-Path $env:GITHUB_WORKSPACE "ort/sdk/lib"
           if (-not (Test-Path -LiteralPath $libDir)) {
             throw "ONNX Runtime lib directory not found: $libDir"
           }
