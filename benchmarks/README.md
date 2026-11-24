@@ -176,10 +176,11 @@ ZTS extension 0.4.0, Python ORT 1.32.0):
 - `benchmarks/results/windows-zts-cpu.json`
 - `benchmarks/results/windows-zts-cuda.json`
 - `benchmarks/results/windows-zts-tensorrt.json`
+- `benchmarks/results/windows-zts-openvino-ep.json`
 
-Each file records `platform`, `machine`, `provider`, `model_file`,
-`onnxruntime_python` and the five percentile sets (mean/p50/p95/min/max) for
-every column, so a table row can be rebuilt without rerunning. Regenerate:
+Each file records `platform`, `machine`, `provider`, `model_file`, and the
+five percentile sets (mean/p50/p95/min/max) for every column, so a table row
+can be rebuilt without rerunning. Regenerate:
 
 ```bat
 python benchmarks\fastembed_int8_bpe.py ^
