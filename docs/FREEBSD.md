@@ -3,6 +3,12 @@
 Verified baseline: FreeBSD 14.5-RELEASE-p4 amd64, PHP 8.5.12 NTS (`php85`
 package), ONNX Runtime 1.30.0 (`onnxruntime` package), clang 21.1.8.
 
+CI runs the same path in `.github/workflows/ci.yml` using
+`vmactions/freebsd-vm` on FreeBSD 14.5. It installs `php85` and `onnxruntime`
+from `pkg`, so the PHP version is whatever the package provides; there is no
+8.5/8.6 matrix. The job runs `tests/build-smoke.sh /usr/local` with `gmake` and
+the stderr wrapper described below.
+
 FreeBSD has no ONNX Runtime NuGet RID. The default `./configure` (NuGet mode)
 therefore stops with an instructional error. Use the system package instead:
 
