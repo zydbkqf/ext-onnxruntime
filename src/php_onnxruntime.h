@@ -18,7 +18,7 @@ extern "C" {
 #endif
 
 #define PHP_ONNXRUNTIME_EXTNAME "onnxruntime"
-#define PHP_ONNXRUNTIME_VERSION "0.4.12"
+#define PHP_ONNXRUNTIME_VERSION "0.4.13"
 
 /* Provided by config.m4/config.w32; keep the module buildable from IDE
  * projects that do not include the generated config.h. */

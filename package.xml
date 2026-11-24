@@ -16,7 +16,7 @@
  </lead>
  <date>2026-11-24</date>
  <version>
-  <release>0.4.12</release>
+  <release>0.4.13</release>
   <api>0.4.0</api>
  </version>
  <stability>
@@ -24,7 +24,7 @@
   <api>beta</api>
  </stability>
  <license uri="https://opensource.org/licenses/MIT">MIT</license>
- <notes>Sources ONNX Runtime from NuGet by default: omitting --with-onnxruntime downloads the Microsoft.ML.OnnxRuntime CPU package, --with-cuda12/--with-cuda13 select the Linux GPU packages (1.26.0 = CUDA 12, 1.32.0 = CUDA 13), and --with-coreml asserts CoreML on macOS arm64. A bare --with-onnxruntime still searches the system SDK. The core build now compiles against ONNX Runtime 1.18+ and gates EP-device, DeviceTensor, Plugin EP and CoreML behind ORT 1.23, so apt 1.21 / dnf 1.22 development packages are usable for the core API while older SDKs throw clear runtime errors for device operations. The NuGet cache moved outside the source tree so make clean cannot delete the SDK. Windows release workflows fetch CPU/CUDA NuGet packages directly and cover PHP 8.6. PHP 8.6 compatibility and the existing synchronous/asynchronous inference, IoBinding, batch and Plugin EP features are preserved.</notes>
+ <notes>0.4.13 closes a Plugin EP lease gap: a device resolved by provider name through appendExecutionProvider() now carries its registration name and generation, so unregisterExecutionProviderLibrary() is refused while the Session is alive. The release also adds OpenVINO Plugin EP benchmarks, FreeBSD CI, and a PHP 8.6-only CI matrix. Sources ONNX Runtime from NuGet by default: omitting --with-onnxruntime downloads the Microsoft.ML.OnnxRuntime CPU package, --with-cuda12/--with-cuda13 select the Linux GPU packages, and --with-coreml asserts CoreML on macOS arm64. The core build compiles against ONNX Runtime 1.18+ and gates EP-device, DeviceTensor, Plugin EP and CoreML behind ORT 1.23. The NuGet cache lives outside the source tree so make clean cannot delete the SDK. Synchronous/asynchronous inference, IoBinding, batch and Plugin EP features are preserved.</notes>
  <contents>
   <dir name="/">
    <file name="config.m4" role="src"/>
@@ -102,6 +102,8 @@
    <file name="tests/034-async-iobinding.phpt" role="test"/>
    <file name="tests/035-async-iobinding-preallocated.phpt" role="test"/>
    <file name="tests/036-appender-routing.phpt" role="test"/>
+   <file name="tests/037-provider-device-fallback.phpt" role="test"/>
+   <file name="tests/038-plugin-lease.phpt" role="test"/>
    <file name="tests/build-smoke.sh" role="test"/>
    <file name="tests/native_stress.cpp" role="test"/>
    <file name="tests/native_async_stress.cpp" role="test"/>
