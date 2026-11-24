@@ -150,6 +150,36 @@ if test "$ort_source" = "nuget"; then
   ort_include_dir="$ort_sdk_dir/include"
   ort_lib_dir="$ort_sdk_dir/lib"
 
+  dnl NuGet dylibs do not agree on their LC_ID_DYLIB install name: 1.32 uses
+  dnl @rpath/libonnxruntime.1.dylib, 1.21 uses
+  dnl @rpath/libonnxruntime.1.21.0.dylib.  The file itself is always
+  dnl libonnxruntime.dylib.  Create aliases for all observed forms, including
+  dnl the exact install name recorded in the binary, and do it for cache hits
+  dnl as well so an old cache cannot silently produce an unloadable module.
+  ort_make_lib_aliases() {
+    ort_alias_dir="$1"
+    if test "$ort_os" = "darwin"; then
+      if test -f "$ort_alias_dir/libonnxruntime.dylib"; then
+        ( cd "$ort_alias_dir" && ln -sf libonnxruntime.dylib libonnxruntime.1.dylib )
+        ln -sf libonnxruntime.dylib "$ort_alias_dir/libonnxruntime.$ort_ver.dylib"
+        if command -v otool >/dev/null 2>&1; then
+          ort_install_name=$(otool -D "$ort_alias_dir/libonnxruntime.dylib" 2>/dev/null | sed -n '2p')
+          ort_install_base=$(printf '%s\n' "$ort_install_name" | sed 's|.*/||')
+          case "$ort_install_base" in
+            *.dylib)
+              if test "$ort_install_base" != "libonnxruntime.dylib"; then
+                ln -sf libonnxruntime.dylib "$ort_alias_dir/$ort_install_base"
+              fi
+              ;;
+          esac
+        fi
+      fi
+    fi
+    if test "$ort_os" = "linux" && test -f "$ort_alias_dir/libonnxruntime.so"; then
+      ( cd "$ort_alias_dir" && ln -sf libonnxruntime.so libonnxruntime.so.1 )
+    fi
+  }
+
   if test -f "$ort_include_dir/onnxruntime_cxx_api.h" && \
      (test -s "$ort_lib_dir/libonnxruntime.so" || test -s "$ort_lib_dir/libonnxruntime.dylib"); then
     AC_MSG_CHECKING([cached ONNX Runtime SDK])
@@ -209,23 +239,12 @@ if test "$ort_source" = "nuget"; then
       AC_MSG_ERROR([the NuGet package contained no ONNX Runtime library for $ort_rid])
     fi
 
-    dnl The NuGet dylib records an @rpath install name that embeds the package
-    dnl version (1.32 -> @rpath/libonnxruntime.1.32.0.dylib, some builds ->
-    dnl libonnxruntime.1.dylib) while the file itself is libonnxruntime.dylib.
-    dnl The .so records libonnxruntime.so.1.  Provide aliases for both forms.
-    if test "$ort_os" = "darwin" && test -f "$ort_tmp/sdk/lib/libonnxruntime.dylib"; then
-      ln -sf libonnxruntime.dylib "$ort_tmp/sdk/lib/libonnxruntime.1.dylib"
-      ln -sf libonnxruntime.dylib "$ort_tmp/sdk/lib/libonnxruntime.$ort_version.dylib"
-    fi
-    if test "$ort_os" = "linux" && test -f "$ort_tmp/sdk/lib/libonnxruntime.so"; then
-      ln -sf libonnxruntime.so "$ort_tmp/sdk/lib/libonnxruntime.so.1"
-    fi
-
     rm -rf "$ort_sdk_dir"
     mv "$ort_tmp/sdk" "$ort_sdk_dir"
     rm -rf "$ort_tmp"
     AC_MSG_RESULT([$ort_sdk_dir])
   fi
+  ort_make_lib_aliases "$ort_lib_dir"
 fi
 
 if test "$ort_source" = "nuget"; then
@@ -350,6 +369,11 @@ and DeviceTensor features additionally require 1.23 (API 23); builds against
 fi
 AC_MSG_CHECKING([ONNX Runtime API version])
 AC_MSG_RESULT([$ort_api_version])
+
+dnl Helper scripts (build-smoke.sh/run-sanitizers.sh) use exactly the SDK this
+dnl configure run selected, not whichever version happens to sort first in the
+dnl NuGet cache.
+printf '%s\n' "$ort_include_dir" > "$abs_builddir/.ort-sdk-include"
 
 if test -z "$ort_ver"; then
   if test -n "$ort_root" && test -f "$ort_root/VERSION_NUMBER"; then

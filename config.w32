@@ -64,7 +64,7 @@ if (!ort_api_match) {
 	ERROR("could not read ORT_API_VERSION from " + ort_include + "\\onnxruntime_c_api.h");
 }
 var ort_api_version = parseInt(ort_api_match[1], 10);
-if (ort_api_version < 23) {
+if (ort_api_version < 18) {
 	ERROR("ONNX Runtime API version " + ort_api_version + " is too old; 1.18 or newer is required. EP-device features need 1.23+.");
 }
 

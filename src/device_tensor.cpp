@@ -154,8 +154,9 @@ void DeviceTensor::copyValue(const Ort::Value &source,
     // A null stream requests ORT's synchronous copy semantics.  Asynchronous
     // copies are intentionally not exposed until an EP provides a reliable
     // completion stream.  Use the C CopyTensors entry point (present since
-    // ORT 1.24); the C++ single-tensor overload is newer and the C++ vector
-    // overload cannot be built from non-copyable Ort::Value handles.
+    // ORT 1.23); the C++ single-tensor overload is newer and the C++ vector
+    // overload cannot be built from non-copyable Ort::Value handles.  The
+    // whole path is compiled only when PHP_ORT_HAS_EP_DEVICE (API >= 23).
     const OrtValue *src_tensors[1] = {source};
     OrtValue *dst_tensors[1] = {destination};
     Ort::Status status(Ort::GetApi().CopyTensors(

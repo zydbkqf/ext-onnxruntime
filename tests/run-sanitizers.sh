@@ -16,6 +16,9 @@ asan_out="/tmp/ort_native_stress_asan"
 plain_out="/tmp/ort_native_stress"
 
 ort_include="${ONNXRUNTIME_INCLUDE:-}"
+if [[ -z "$ort_include" && -f "$root/.ort-sdk-include" ]]; then
+    read -r ort_include < "$root/.ort-sdk-include"
+fi
 if [[ -z "$ort_include" ]]; then
     if [[ -d "$root/third_party/onnxruntime/include" ]]; then
         ort_include="$root/third_party/onnxruntime/include"

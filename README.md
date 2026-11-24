@@ -45,9 +45,9 @@ The PHP code targets the Zend API in PHP 8.0–8.6 and rejects versions below 8.
 - A C++17 compiler (Apple clang on macOS; g++/clang++ on Linux)
 - ONNX Runtime **1.18.0 or newer** for the core build (`ORT_API_VERSION >= 18`);
   1.32.0 is the current default. The core surface is verified against 1.18, 1.20,
-  1.21, 1.23, 1.26 and 1.32; 1.17.3 also compiles and loads, but the bundled PHPT
-  fixtures are ONNX IR 10, which ORT 1.17 cannot parse (max IR 9), so 1.17 is not
-  claimed as verified.
+  1.21, 1.23, 1.26 and 1.32. 1.17 and older are rejected by `config.m4` and
+  `config.w32`; an exploratory 1.17.3 build compiled, but its bundled PHPT
+  fixtures are ONNX IR 10, above ORT 1.17's IR 9 limit, so it is not supported.
 - The `EpDevice`/`DeviceTensor`/Plugin-EP API requires **1.23.0 or newer**.
   Builds against 1.18–1.22 keep the same PHP class surface, but device-related
   methods throw `requires ONNX Runtime 1.23 or newer`. There is no separate
@@ -135,7 +135,7 @@ Distribution development packages and their current versions:
 | apt (Debian 13 trixie) | `libonnxruntime-dev` | **1.21.0** | Yes | No (needs 1.23) |
 | dnf (Fedora 44) | `onnxruntime-devel` | **1.22.2** | Yes | No (needs 1.23) |
 | Homebrew (macOS arm64) | `onnxruntime` | **1.32.0** | Yes | Yes |
-| NuGet (`Microsoft.ML.OnnxRuntime`) | flat-container package | 1.17.3 – 1.32.0 | Yes | 1.23.2+ only |
+| NuGet (`Microsoft.ML.OnnxRuntime`) | flat-container package | 1.18.0 – 1.32.0 | Yes | 1.23.2+ only |
 
 These can be used as the system source (`./configure --with-onnxruntime`); no
 NuGet download is needed. apt's 1.21 and dnf's 1.22 are fully usable for the

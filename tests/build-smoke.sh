@@ -39,6 +39,17 @@ done
 if [[ -z "$ORT_ROOT" ]]; then
     ORT_ROOT="${ONNXRUNTIME_ROOT:-}"
 fi
+if [[ -n "$ORT_ROOT" ]]; then
+    ORT_ROOT="$(cd "$ORT_ROOT" && pwd)"
+    # SIP-protected /usr/bin/make strips DYLD_LIBRARY_PATH before running PHP,
+    # which made the directory build report every test as skipped.  Bake the
+    # SDK lib directory into the module rpath instead.
+    if [[ -d "$ORT_ROOT/lib" ]]; then
+        export ONNXRUNTIME_RPATH="$ORT_ROOT/lib"
+    else
+        export ONNXRUNTIME_RPATH="$ORT_ROOT"
+    fi
+fi
 
 cd "$ROOT"
 
