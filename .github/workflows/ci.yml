@@ -8,6 +8,7 @@ jobs:
   smoke:
     name: ${{ matrix.os }} (PHP ${{ matrix.php-version }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -16,9 +17,9 @@ jobs:
             php-version: "8.5"
           - os: ubuntu-24.04
             php-version: "8.6"
-          - os: macos-14
+          - os: macos-15
             php-version: "8.5"
-          - os: macos-14
+          - os: macos-15
             php-version: "8.6"
 
     steps:
@@ -37,7 +38,13 @@ jobs:
 
       - name: Install Linux sanitizer toolchain
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y clang
+        run: |
+          if command -v clang >/dev/null 2>&1 && command -v clang++ >/dev/null 2>&1; then
+            echo "clang already present: $(clang++ --version | head -n 1)"
+            exit 0
+          fi
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends clang
 
       - name: Build and load smoke
         run: bash tests/build-smoke.sh
