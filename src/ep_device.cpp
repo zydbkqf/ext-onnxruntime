@@ -144,8 +144,7 @@ Ort::ConstEpDevice resolveEpDevice(Ort::Env &env, const EpDeviceInfo &info) {
     for (const auto &device : env.GetEpDevices()) {
         EpDeviceInfo candidate = readEpDevice(device);
         const uint32_t ordinal = ordinals[candidate.baseKey()]++;
-        if (candidate.matches(device) && info.matches(device) &&
-            info.instance_ordinal == ordinal) {
+        if (info.matches(device) && info.instance_ordinal == ordinal) {
             return device;
         }
     }

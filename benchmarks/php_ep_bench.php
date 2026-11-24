@@ -75,10 +75,15 @@ function modelInputs(OnnxRuntime\Session $session, int $batchSize, int $sequence
             throw new RuntimeException("input '$name' has no shape");
         }
         if (in_array(null, $shape, true)) {
-            if (count($shape) === 2) {
-                $shape = [$batchSize, $sequenceLength];
-            } else {
+            if (count($shape) !== 2) {
                 throw new RuntimeException("input '$name' has an unsupported dynamic shape; pass a static-shape model");
+            }
+            // Only replace the dynamic dimensions; a [null, 768] input keeps
+            // its static hidden size instead of becoming [batch, sequence].
+            foreach ($shape as $index => $dim) {
+                if ($dim === null) {
+                    $shape[$index] = $index === 0 ? $batchSize : $sequenceLength;
+                }
             }
         } else {
             $shape = array_map('intval', $shape);

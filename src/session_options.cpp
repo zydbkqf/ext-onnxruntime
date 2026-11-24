@@ -1,6 +1,7 @@
 #include "session_options.h"
 
 #include "onnx_tensor.h"
+#include "runtime.h"
 
 #include <algorithm>
 #include <cctype>
@@ -135,6 +136,7 @@ ExecutionMode executionModeFromName(const std::string &name) {
 
 void resolveExecutionProviderDevices(SessionConfig &config, Ort::Env &env) {
 #if PHP_ORT_HAS_EP_DEVICE
+    (void)env;
     bool has_device_candidate = false;
     for (const ExecutionProviderConfig &provider : config.execution_providers) {
         if (provider.kind != ExecutionProviderKind::Builtin) {
@@ -152,7 +154,11 @@ void resolveExecutionProviderDevices(SessionConfig &config, Ort::Env &env) {
         return;
     }
 
-    const std::vector<EpDeviceInfo> devices = readEpDevices(env);
+    // runtimeEpDevices() enriches the Env snapshot with Plugin EP registration
+    // names and generations.  readEpDevices() alone leaves those fields empty,
+    // so a name-resolved plugin device would acquire no lease and the plugin
+    // could be unregistered while its Session is still alive.
+    const std::vector<EpDeviceInfo> devices = runtimeEpDevices();
     if (devices.empty()) {
         return;
     }
