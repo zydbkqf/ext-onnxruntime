@@ -71,7 +71,7 @@ jobs:
             set -eux
             php -v
             php-config --version
-            pkg info php85 onnxruntime | grep -E '^(Name|Version):'
+            pkg info php85 onnxruntime | grep -E '^(Name|Version)'
 
             # ONNX Runtime 1.30 prints a cpuinfo warning to stderr during
             # startup on FreeBSD, which would otherwise break every PHPT diff.
@@ -85,4 +85,6 @@ jobs:
             exit $status
             EOF
             chmod +x /tmp/php-ort-wrap
-            MAKE=gmake PHP_BIN=/tmp/php-ort-wrap bash tests/build-smoke.sh /usr/local
+            mkdir -p /tmp/freebsd-bin
+            ln -sf /usr/local/bin/gmake /tmp/freebsd-bin/make
+            PATH=/tmp/freebsd-bin:$PATH PHP_BIN=/tmp/php-ort-wrap bash tests/build-smoke.sh /usr/local

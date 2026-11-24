@@ -17,7 +17,6 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PHP_BIN="${PHP_BIN:-php}"
 JOBS="${JOBS:-8}"
-MAKE_BIN="${MAKE:-make}"
 MODULE="$ROOT/modules/onnxruntime.so"
 
 if ! PHP_BIN_PATH="$(command -v "$PHP_BIN")"; then
@@ -81,7 +80,7 @@ if [[ -n "$ORT_ROOT" ]]; then
 else
     ./configure ${CONFIGURE_ARGS[@]+"${CONFIGURE_ARGS[@]}"}
 fi
-"$MAKE_BIN" -j"$JOBS"
+make -j"$JOBS"
 
 if [[ "$(uname -s)" == "Darwin" ]]; then
     codesign --force --sign - "$MODULE"
@@ -111,4 +110,4 @@ if ($out["Y"]->toArray() !== [[1.5, 2.5, 3.5], [4.5, 5.5, 6.5]]) {
 echo "build-smoke-ok\n";
 '
 
-PHP_EXECUTABLE="$PHP_BIN" NO_INTERACTION=1 "$MAKE_BIN" test PHP_EXECUTABLE="$PHP_BIN"
+PHP_EXECUTABLE="$PHP_BIN" NO_INTERACTION=1 make test PHP_EXECUTABLE="$PHP_BIN"
