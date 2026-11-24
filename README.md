@@ -2,7 +2,7 @@
 
 A native PHP extension that loads ONNX models and runs inference directly from PHP, using the Zend C API, C++, and the ONNX Runtime native library. It does not use FFI or Python.
 
-Current status: synchronous inference, native async tasks, CPU I/O Binding, fixed-shape preallocated outputs, device tensors, explicit device copies, explicit multi-group batch inference, and async I/O Binding are implemented. The current feature set is verified on macOS arm64 ZTS and NTS, Windows x86_64 ZTS and NTS, Linux x86_64 ZTS, and Linux x86_64 NTS (33/35 to 35/36 PHPT, with CoreML and Windows-CUDA platform skips). The Windows CUDA Plugin EP smoke path has passed: register the provider DLL, enumerate the CUDA `EpDevice`, append it with `appendEpDevice()`, and run inference on the NVIDIA GPU. Windows CUDA and TensorRT inference through `appendExecutionProvider()` also runs on the GPU. This is a smoke result, not general Plugin EP acceptance across every provider, platform, unload sequence, and failure mode.
+Current status: synchronous inference, native async tasks, CPU I/O Binding, fixed-shape preallocated outputs, device tensors, explicit device copies, explicit multi-group batch inference, and async I/O Binding are implemented. The current feature set is verified on macOS arm64 ZTS and NTS, Windows x86_64 ZTS and NTS, Linux x86_64 ZTS, and Linux x86_64 NTS (33/35 to 35/37 PHPT, with Windows CUDA and no-CUDA/TensorRT platform skips; CoreML passes on macOS). The Windows CUDA Plugin EP smoke path has passed: register the provider DLL, enumerate the CUDA `EpDevice`, append it with `appendEpDevice()`, and run inference on the NVIDIA GPU. Windows CUDA and TensorRT inference through `appendExecutionProvider()` also runs on the GPU. This is a smoke result, not general Plugin EP acceptance across every provider, platform, unload sequence, and failure mode. The OpenVINO Plugin EP also runs on Windows and is benchmarked in `benchmarks/README.md`.
 
 Execution providers have two distinct entry points:
 
@@ -27,9 +27,7 @@ When no EP is appended, ORT defaults are preserved; this project does not promis
 
 | Platform | PHP | Thread mode | Status |
 | --- | --- | --- | --- |
-| macOS arm64 | 8.5.6 | ZTS | Verified: 34/35 PHPT, 1 Windows-CUDA skip (`033`), ASan, native sync/async stress |
-| macOS arm64 | 8.5.12 | NTS | Verified: 34/35 PHPT, 1 Windows-CUDA skip (`033`); Homebrew PHP build |
-| macOS arm64 | 8.6.0 | ZTS | Verified: 34/36 PHPT, 2 platform skips (CoreML, Windows CUDA); PHP 8.6 removed `XtOffsetOf` |
+| macOS arm64 | 8.5.6 / 8.5.12 / 8.6.0 | ZTS / NTS / ZTS | Verified: 34/35 (8.5) and 35/37 (8.6) PHPT; 1–2 platform skips (Windows CUDA `033`, no CUDA/TensorRT `036`); CoreML passes; ASan, native sync/async stress; PHP 8.6 removed `XtOffsetOf`, handled by a version-guarded offset helper |
 | Linux x86_64 | 8.6.0 | NTS | Verified: 33/36 PHPT, 3 platform skips (CoreML, Windows CUDA, no CUDA/TensorRT provider in the CPU SDK); PHP built from source, ORT 1.28.0 CPU runtime |
 | Linux x86_64 | 8.5.12 | NTS | Verified: 33/35 PHPT, 2 platform skips (CoreML, Windows CUDA); CUDA built-in EP runs inference with the ORT 1.28.2 CUDA 13 GPU package; new `--with-onnxruntime=DIR` build path |
 | Linux x86_64 | 8.5.12 | ZTS | Verified: 33/35 PHPT, 2 platform skips (CoreML, Windows CUDA); CUDA built-in EP runs inference with the ORT 1.28.2 CUDA 13 GPU package; async ASan+LSan passed; Swoole 6.2.1 Fiber/coroutine/process/thread, `pcntl_fork`, `parallel` |
@@ -139,6 +137,42 @@ instructional error. Install `pkg install php85 onnxruntime` and use either
 `./configure --with-onnxruntime` or
 `./configure --with-onnxruntime=/usr/local`; details are in
 `docs/FREEBSD.md`.
+
+### OpenVINO Plugin EP (Windows/Linux)
+
+OpenVINO is not built into the CPU NuGet runtime; it is a standalone plugin EP.
+Install `Intel.ML.OnnxRuntime.EP.OpenVINO` (1.8.1 was tested against ORT 1.32),
+keep the plugin and its OpenVINO/TBB DLLs together, then register the plugin on
+`Runtime` and select its `EpDevice`:
+
+```php
+$runtime = OnnxRuntime\Runtime::default();
+$runtime->registerExecutionProviderLibrary(
+    'openvino',
+    'D:\php\openvino-ep\onnxruntime_providers_openvino_plugin.dll'
+);
+
+$options = new OnnxRuntime\SessionOptions();
+foreach ($runtime->getEpDevices() as $device) {
+    if ($device->epName() === 'OpenVINOExecutionProvider') {
+        $options->appendEpDevice($device);
+        break;
+    }
+}
+$session = new OnnxRuntime\Session('model.onnx', $options);
+```
+
+On Windows the plugin and the `openvino.dll` / `tbb*.dll` files must be in the
+same directory or on `PATH`; on Linux add that directory to
+`LD_LIBRARY_PATH`. The plugin exposes a CPU device and an
+`OpenVINOExecutionProvider.AUTO` device. On an i5-12400F with BGE-small int8,
+batch 8 × 64, OpenVINO's p50 was 71.9 ms versus 245.2 ms on CPU (3.41×); see
+`benchmarks/README.md`.
+
+`DNNLExecutionProvider` is not part of Microsoft's prebuilt NuGet packages:
+`appendExecutionProvider('DNNL')` is rejected as an unknown provider. oneDNN is
+used underneath OpenVINO's CPU plugin; an explicit DNNL EP requires building
+ONNX Runtime from source with `--use_dnnl`.
 
 ### NuGet download integrity
 
