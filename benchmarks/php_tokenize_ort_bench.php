@@ -27,6 +27,7 @@ $provider = $spec['provider'];
 $iterations = (int) $spec['iterations'];
 $warmup = (int) $spec['warmup'];
 $cudaLib = $spec['cuda_lib'] ?? null;
+$openvinoLib = $spec['openvino_lib'] ?? null;
 $tokenizerPath = $spec['tokenizer_path'] ?? null;
 $text = (string) ($spec['text'] ?? 'The quick brown fox jumps over the lazy dog.');
 $batchSize = (int) ($spec['batch_size'] ?? 8);
@@ -60,6 +61,23 @@ if ($provider === 'coreml') {
         throw new RuntimeException('CUDA EpDevice not found');
     }
     $options->appendEpDevice($cuda);
+} elseif ($provider === 'openvino') {
+    if (!is_string($openvinoLib) || !is_file($openvinoLib)) {
+        throw new RuntimeException('OpenVINO provider library not found: ' . (string) $openvinoLib);
+    }
+    $runtime = OnnxRuntime\Runtime::default();
+    $runtime->registerExecutionProviderLibrary('openvino', $openvinoLib);
+    $openvino = null;
+    foreach ($runtime->getEpDevices() as $device) {
+        if ($device->epName() === 'OpenVINOExecutionProvider') {
+            $openvino = $device;
+            break;
+        }
+    }
+    if ($openvino === null) {
+        throw new RuntimeException('OpenVINO EpDevice not found');
+    }
+    $options->appendEpDevice($openvino);
 } elseif ($provider === 'tensorrt') {
     // The TensorRT EP has no device-based path here; it is appended through the
     // dedicated appender and falls back to the CUDA EP appended after it.

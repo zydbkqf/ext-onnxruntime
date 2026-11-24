@@ -1,0 +1,40 @@
+{
+    "model": "D:\\ort-test\\model\\model_optimized.onnx",
+    "provider": "openvino",
+    "php_version": "8.6.0",
+    "extension_version": "0.4.12",
+    "onnxruntime_version": "1.32.0",
+    "iterations": 50,
+    "warmup": 5,
+    "threads": 1,
+    "batch_size": 8,
+    "sequence_length": 64,
+    "input_shapes": {
+        "input_ids": [
+            8,
+            64
+        ],
+        "attention_mask": [
+            8,
+            64
+        ],
+        "token_type_ids": [
+            8,
+            64
+        ]
+    },
+    "cpu": {
+        "mean_ms": 248.40873599999998,
+        "p50_ms": 245.1981,
+        "p95_ms": 259.085,
+        "min_ms": 240.5209,
+        "max_ms": 313.3355
+    },
+    "openvino": {
+        "mean_ms": 75.770668,
+        "p50_ms": 71.8535,
+        "p95_ms": 100.9107,
+        "min_ms": 66.0837,
+        "max_ms": 131.6865
+    }
+}

@@ -48,8 +48,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--php-script", default=str(Path(__file__).with_name("php_ort_bench.php")))
     parser.add_argument("--php-tokenize-script",
                         default=str(Path(__file__).with_name("php_tokenize_ort_bench.php")))
-    parser.add_argument("--provider", choices=["cpu", "coreml", "cuda", "tensorrt"], default="cpu")
+    parser.add_argument("--provider", choices=["cpu", "coreml", "cuda", "openvino", "tensorrt"],
+                        default="cpu")
     parser.add_argument("--cuda-lib", default=None, help="CUDA provider DLL for PHP (Windows)")
+    parser.add_argument("--openvino-lib", default=None,
+                        help="OpenVINO plugin DLL for PHP (Windows), or the plugin .so on Linux")
     parser.add_argument("--trt-cache-dir", default=None,
                         help="TensorRT engine cache directory (created if missing)")
     parser.add_argument("--ort-lib-dir", default=None, help="ORT shared-library directory")
@@ -96,13 +99,16 @@ def main() -> int:
         "cpu": "CPUExecutionProvider",
         "coreml": "CoreMLExecutionProvider",
         "cuda": "CUDAExecutionProvider",
+        "openvino": "OpenVINOExecutionProvider",
         "tensorrt": "TensorrtExecutionProvider",
     }[args.provider]
 
     import onnxruntime as ort
     available = ort.get_available_providers()
     if provider not in available:
-        raise SystemExit(f"{provider} unavailable; available={available}")
+        hint = ("; install onnxruntime-ep-openvino for OpenVINO" if args.provider == "openvino"
+                else "")
+        raise SystemExit(f"{provider} unavailable; available={available}{hint}")
 
     # The TensorRT EP falls back to CUDA for partitions it cannot take, so the
     # CUDA EP has to be appended after it. The engine cache keeps the build out
@@ -158,6 +164,7 @@ def main() -> int:
         "model": str(model_path),
         "provider": args.provider,
         "cuda_lib": args.cuda_lib,
+        "openvino_lib": args.openvino_lib,
         "trt_options": trt_php_options,
         "threads": args.threads,
         "iterations": args.iterations,
@@ -182,6 +189,14 @@ def main() -> int:
             env["PATH"] = lib_dir + ";" + env.get("PATH", "")
         else:
             env["LD_LIBRARY_PATH"] = lib_dir + ":" + env.get("LD_LIBRARY_PATH", "")
+    if args.openvino_lib:
+        plugin_dir = str(Path(args.openvino_lib).resolve().parent)
+        if platform.system() == "Darwin":
+            env["DYLD_LIBRARY_PATH"] = plugin_dir + ":" + env.get("DYLD_LIBRARY_PATH", "")
+        elif platform.system() == "Windows":
+            env["PATH"] = plugin_dir + ";" + env.get("PATH", "")
+        else:
+            env["LD_LIBRARY_PATH"] = plugin_dir + ":" + env.get("LD_LIBRARY_PATH", "")
 
     command = [args.php, "-n", "-d", f"extension={Path(args.extension).resolve()}",
                str(Path(args.php_script).resolve()), spec_path]
@@ -198,6 +213,7 @@ def main() -> int:
         "model": str(model_path),
         "provider": args.provider,
         "cuda_lib": args.cuda_lib,
+        "openvino_lib": args.openvino_lib,
         "trt_options": trt_php_options,
         "threads": args.threads,
         "iterations": args.iterations,

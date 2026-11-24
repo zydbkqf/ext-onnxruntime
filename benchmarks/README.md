@@ -55,6 +55,11 @@ Provider values:
 - `coreml`: `CoreMLExecutionProvider` (macOS)
 - `cuda`: `CUDAExecutionProvider` (Windows/Linux with `onnxruntime-gpu`,
   plus `--cuda-lib` pointing at the PHP CUDA provider DLL on Windows)
+- `openvino`: `OpenVINOExecutionProvider` (the standalone plugin package
+  `Intel.ML.OnnxRuntime.EP.OpenVINO`; pass `--openvino-lib` pointing at
+  `onnxruntime_providers_openvino_plugin.dll` on Windows, or the plugin `.so`
+  on Linux). The FastEmbed/Python side additionally needs
+  `pip install onnxruntime-ep-openvino`.
 - `tensorrt`: `TensorrtExecutionProvider` with `CUDAExecutionProvider` as its
   fallback. TensorRT builds an engine on first run; `--trt-cache-dir` points at
   a cache directory so reruns reuse it instead of rebuilding. The engine build
@@ -84,6 +89,39 @@ CUDA 13 and the pip-provided cuDNN, add these directories:
 <venv>\Lib\site-packages\nvidia\cudnn\bin
 <venv>\Lib\site-packages\nvidia\cu13\bin\x86_64
 ```
+
+## Execution-provider benchmark
+
+`php_ep_bench.php` measures the same model on CPU and on a device-backed EP
+without needing the Python FastEmbed stack. It reads static shapes from the
+model; for a 2D dynamic input it uses `--batch-size` and `--sequence-length`.
+The model inputs are deterministic dummy values, so this compares execution
+speed, not accuracy.
+
+```bat
+php -n -d extension=D:\php\ext\php_onnxruntime.dll benchmarks\php_ep_bench.php ^
+  --model D:\models\bge-small-en-v1.5-onnx-Q\model_optimized.onnx ^
+  --provider openvino ^
+  --openvino-lib D:\php\openvino-ep\onnxruntime_providers_openvino_plugin.dll ^
+  --iterations 50 --warmup 5 --threads 1 ^
+  --output benchmarks\results\windows-zts-openvino-ep.json
+```
+
+Windows 11, i5-12400F, PHP 8.6.0 ZTS, extension 0.4.12 / ORT 1.32.0,
+OpenVINO plugin package `Intel.ML.OnnxRuntime.EP.OpenVINO` 1.8.1, BGE-small
+int8, batch 8 × 64, 1 intra-op thread, 50 measured runs:
+
+| Provider | Mean | p50 | p95 | Speedup (p50) |
+| --- | ---: | ---: | ---: | ---: |
+| CPU | 248.4 ms | 245.2 ms | 259.1 ms | 1.00× |
+| OpenVINO (CPU device) | 75.8 ms | 71.9 ms | 100.9 ms | 3.41× |
+
+The OpenVINO plugin registered `OpenVINOExecutionProvider` and an
+`.AUTO` device; this run used the explicit CPU device. The Microsoft
+`Microsoft.ML.OnnxRuntime` NuGet package does not expose a `DNNLExecutionProvider`
+(`appendExecutionProvider('DNNL')` is rejected as an unknown provider); oneDNN
+is used underneath OpenVINO's CPU plugin. An explicit DNNL EP requires building
+ONNX Runtime from source with `--use_dnnl`.
 
 ## Results
 
