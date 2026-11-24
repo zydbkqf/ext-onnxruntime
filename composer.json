@@ -44,8 +44,23 @@
         "configure-options": [
             {
                 "name": "with-onnxruntime",
-                "description": "Path to the ONNX Runtime SDK root containing include/ and lib/",
-                "needs-value": true
+                "description": "ONNX Runtime SDK root, or bare option to use system libraries (omit to download the NuGet CPU package)",
+                "needs-value": false
+            },
+            {
+                "name": "with-cuda12",
+                "description": "Download the Linux CUDA 12 ONNX Runtime package",
+                "needs-value": false
+            },
+            {
+                "name": "with-cuda13",
+                "description": "Download the Linux CUDA 13 ONNX Runtime package",
+                "needs-value": false
+            },
+            {
+                "name": "with-coreml",
+                "description": "Require the CoreML execution provider on macOS arm64",
+                "needs-value": false
             }
         ]
     }

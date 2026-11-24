@@ -11,6 +11,8 @@
 
 namespace php_ort {
 
+#if PHP_ORT_HAS_EP_DEVICE
+
 namespace {
 
 std::string lowercase(std::string value) {
@@ -53,11 +55,11 @@ std::string DeviceTensor::normalizeMemoryType(
         "memoryType must be \"device\" or \"host_accessible\"");
 }
 
-OrtDeviceMemoryType DeviceTensor::ortMemoryType(
+int DeviceTensor::ortMemoryType(
     const std::string &normalized) {
     return normalized == "host_accessible"
-               ? OrtDeviceMemoryType_HOST_ACCESSIBLE
-               : OrtDeviceMemoryType_DEFAULT;
+               ? static_cast<int>(OrtDeviceMemoryType_HOST_ACCESSIBLE)
+               : static_cast<int>(OrtDeviceMemoryType_DEFAULT);
 }
 
 std::unique_ptr<DeviceTensor> DeviceTensor::allocate(
@@ -92,7 +94,7 @@ std::unique_ptr<DeviceTensor> DeviceTensor::allocate(
     Ort::ConstEpDevice ep_device =
         resolveEpDevice(*tensor->env_, device);
     Ort::ConstMemoryInfo memory_info = ep_device.GetMemoryInfo(
-        ortMemoryType(tensor->memory_type_));
+        static_cast<OrtDeviceMemoryType>(ortMemoryType(tensor->memory_type_)));
 
     // EpDevice_MemoryInfo returns nullptr for DEFAULT on an EP that uses
     // CPU memory (including the built-in CPU device).  In that case use
@@ -151,8 +153,13 @@ void DeviceTensor::copyValue(const Ort::Value &source,
     }
     // A null stream requests ORT's synchronous copy semantics.  Asynchronous
     // copies are intentionally not exposed until an EP provides a reliable
-    // completion stream.
-    Ort::Status status = env_->CopyTensor(source, destination, nullptr);
+    // completion stream.  Use the C CopyTensors entry point (present since
+    // ORT 1.24); the C++ single-tensor overload is newer and the C++ vector
+    // overload cannot be built from non-copyable Ort::Value handles.
+    const OrtValue *src_tensors[1] = {source};
+    OrtValue *dst_tensors[1] = {destination};
+    Ort::Status status(Ort::GetApi().CopyTensors(
+        static_cast<OrtEnv *>(*env_), src_tensors, dst_tensors, nullptr, 1));
     if (!status.IsOK()) {
         throw ConversionError("device tensor copy failed: " +
                               status.GetErrorMessage());
@@ -232,5 +239,62 @@ void DeviceTensor::copyFromDevice(const DeviceTensor &source) {
     }
     copyValue(source.value_, value_);
 }
+
+#else
+
+size_t DeviceTensor::checkedElementCount(const std::vector<int64_t> &) {
+    throw ConversionError(
+        "device tensors require ONNX Runtime 1.23 or newer (API 23)");
+}
+
+std::string DeviceTensor::normalizeMemoryType(const std::string &) {
+    throw ConversionError(
+        "device tensors require ONNX Runtime 1.23 or newer (API 23)");
+}
+
+int DeviceTensor::ortMemoryType(const std::string &) {
+    return 0;
+}
+
+std::unique_ptr<DeviceTensor> DeviceTensor::allocate(
+    const EpDeviceInfo &, const std::vector<int64_t> &,
+    ONNXTensorElementDataType, const std::string &) {
+    throw ConversionError(
+        "device tensors require ONNX Runtime 1.23 or newer (API 23)");
+}
+
+void DeviceTensor::assertCompatible(const DeviceTensor &) const {
+    throw ConversionError(
+        "device tensors require ONNX Runtime 1.23 or newer (API 23)");
+}
+
+bool DeviceTensor::isCpuDevice() const {
+    return false;
+}
+
+void DeviceTensor::copyCpuMemory(const void *, void *, size_t) const {
+}
+
+void DeviceTensor::copyValue(const Ort::Value &, Ort::Value &) const {
+    throw ConversionError(
+        "device tensors require ONNX Runtime 1.23 or newer (API 23)");
+}
+
+void DeviceTensor::copyFrom(const Tensor &) {
+    throw ConversionError(
+        "device tensors require ONNX Runtime 1.23 or newer (API 23)");
+}
+
+Tensor DeviceTensor::copyTo() const {
+    throw ConversionError(
+        "device tensors require ONNX Runtime 1.23 or newer (API 23)");
+}
+
+void DeviceTensor::copyFromDevice(const DeviceTensor &) {
+    throw ConversionError(
+        "device tensors require ONNX Runtime 1.23 or newer (API 23)");
+}
+
+#endif
 
 }  // namespace php_ort

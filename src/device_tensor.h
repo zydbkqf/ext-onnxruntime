@@ -92,7 +92,7 @@ private:
     /** Throws ConversionError when shape has a negative or overflowing size. */
     static size_t checkedElementCount(const std::vector<int64_t> &shape);
     static std::string normalizeMemoryType(const std::string &memory_type);
-    static OrtDeviceMemoryType ortMemoryType(const std::string &normalized);
+    static int ortMemoryType(const std::string &normalized);
 
     void assertCompatible(const DeviceTensor &other) const;
     void copyValue(const Ort::Value &source, Ort::Value &destination) const;

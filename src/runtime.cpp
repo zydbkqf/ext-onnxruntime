@@ -51,6 +51,13 @@ void ensureRuntimeAcceptingWork() {
 void registerExecutionProviderLibrary(const std::string &registration_name,
                                       const std::string &library_path) {
     ensureRuntimeAcceptingWork();
+#if !PHP_ORT_HAS_EP_DEVICE
+    (void)library_path;
+    throw ConversionError(
+        "execution provider plugin libraries require ONNX Runtime 1.23 or "
+        "newer (API 23); this build targets API " +
+        std::to_string(ORT_API_VERSION) + " (" + registration_name + ")");
+#else
     if (registration_name.empty()) {
         throw ConversionError("execution provider registration name is empty");
     }
@@ -116,10 +123,17 @@ void registerExecutionProviderLibrary(const std::string &registration_name,
     }
 
     g_plugin_libraries.emplace(registration_name, std::move(registration));
+#endif
 }
 
 void unregisterExecutionProviderLibrary(const std::string &registration_name) {
     ensureRuntimeAcceptingWork();
+#if !PHP_ORT_HAS_EP_DEVICE
+    throw ConversionError(
+        "execution provider plugin libraries require ONNX Runtime 1.23 or "
+        "newer (API 23); this build targets API " +
+        std::to_string(ORT_API_VERSION) + " (" + registration_name + ")");
+#else
     std::lock_guard<std::mutex> lock(g_plugin_mutex);
     auto it = g_plugin_libraries.find(registration_name);
     if (it == g_plugin_libraries.end()) {
@@ -146,9 +160,17 @@ void unregisterExecutionProviderLibrary(const std::string &registration_name) {
         }
     }
     g_plugin_libraries.erase(it);
+#endif
 }
 
 void validatePluginDevice(const EpDeviceInfo &device) {
+#if !PHP_ORT_HAS_EP_DEVICE
+    if (device.registration_name.empty()) {
+        return;
+    }
+    throw ConversionError(
+        "EP devices require ONNX Runtime 1.23 or newer (API 23)");
+#else
     if (device.registration_name.empty()) {
         return;
     }
@@ -173,6 +195,7 @@ void validatePluginDevice(const EpDeviceInfo &device) {
             "EP device does not belong to the registered Plugin EP: " +
             device.registration_name);
     }
+#endif
 }
 
 std::vector<EpDeviceInfo> runtimeEpDevices() {
@@ -270,6 +293,7 @@ void shutdownRuntime() {
         return;
     }
 
+#if PHP_ORT_HAS_EP_DEVICE
     try {
         auto env = environment();
         for (const auto &entry : g_plugin_libraries) {
@@ -293,6 +317,7 @@ void shutdownRuntime() {
     } catch (...) {
         // Environment is already gone; the process is exiting.
     }
+#endif
     g_plugin_libraries.clear();
     g_device_owners.clear();
 }

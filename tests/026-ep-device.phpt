@@ -1,7 +1,12 @@
 --TEST--
 SessionOptions appendEpDevice uses ORT V2 device append and is separate from built-in EP append
 --SKIPIF--
-<?php if (!extension_loaded('onnxruntime')) die('skip onnxruntime not loaded'); ?>
+<?php
+if (!extension_loaded('onnxruntime')) die('skip onnxruntime not loaded');
+if (!OnnxRuntime\Runtime::default()->supports('ep_device')) {
+    die('skip EP devices and device tensors require ONNX Runtime 1.23+ (API 23)');
+}
+?>
 --FILE--
 <?php
 $r = OnnxRuntime\Runtime::default();

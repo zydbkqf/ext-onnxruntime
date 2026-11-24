@@ -147,18 +147,27 @@ const char *elementTypeName(ONNXTensorElementDataType type) {
             return "float8e5m2";
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ:
             return "float8e5m2fnuz";
+        /* Added in ONNX Runtime 1.20 (ORT_API_VERSION 20). */
+#if ORT_API_VERSION >= 20
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4:
             return "uint4";
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4:
             return "int4";
+#endif
+        /* Added in ONNX Runtime 1.24 (ORT_API_VERSION 24). */
+#if ORT_API_VERSION >= 24
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT4E2M1:
             return "float4e2m1";
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT2:
             return "uint2";
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT2:
             return "int2";
+#endif
+        /* Added in ONNX Runtime 1.27 (ORT_API_VERSION 27). */
+#if ORT_API_VERSION >= 27
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E8M0:
             return "float8e8m0";
+#endif
         default:
             return "unknown";
     }

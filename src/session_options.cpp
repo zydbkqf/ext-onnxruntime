@@ -136,10 +136,22 @@ void SessionConfig::applyTo(Ort::SessionOptions &options,
                 appendTensorRtProvider(options, provider);
                 continue;
             }
+            if (provider.name == "CoreML") {
+#if ORT_API_VERSION < 23
+                throw ConversionError(
+                    "the CoreML execution provider requires an ONNX Runtime "
+                    "1.23 or newer SDK (this build targets API " +
+                    std::to_string(ORT_API_VERSION) + ")");
+#else
+                options.AppendExecutionProvider(provider.name, provider.options);
+                continue;
+#endif
+            }
             options.AppendExecutionProvider(provider.name, provider.options);
             continue;
         }
 
+#if PHP_ORT_HAS_EP_DEVICE
         // Resolve a fresh Env-owned device.  SessionConfig stores only the
         // identity snapshot, so a registration cannot invalidate a raw
         // OrtEpDevice* held by this PHP object.
@@ -147,6 +159,13 @@ void SessionConfig::applyTo(Ort::SessionOptions &options,
         std::vector<Ort::ConstEpDevice> devices;
         devices.push_back(device);
         options.AppendExecutionProvider_V2(env, devices, provider.options);
+#else
+        (void)provider;
+        (void)env;
+        (void)options;
+        throw ConversionError(
+            "appendEpDevice requires ONNX Runtime 1.23 or newer (API 23)");
+#endif
     }
 }
 

@@ -8,6 +8,26 @@
 
 #include "onnxruntime_cxx_api.h"
 
+/* EP-device and DeviceTensor support needs OrtEpDevice (API 22) plus
+ * OrtDeviceMemoryType (API 23).  Builds against older ONNX Runtime versions
+ * keep the PHP class surface but every device-tensor operation reports that
+ * the feature is unavailable. */
+#if ORT_API_VERSION >= 23
+# define PHP_ORT_HAS_EP_DEVICE 1
+#else
+# define PHP_ORT_HAS_EP_DEVICE 0
+#endif
+
+#if ORT_API_VERSION < 22
+/* API versions before 1.22 have no OrtHardwareDeviceType.  Mirror the values
+ * used by newer runtimes so the identity snapshot keeps its layout. */
+typedef enum OrtHardwareDeviceType {
+    OrtHardwareDeviceType_CPU,
+    OrtHardwareDeviceType_GPU,
+    OrtHardwareDeviceType_NPU
+} OrtHardwareDeviceType;
+#endif
+
 namespace php_ort {
 
 /**
@@ -59,25 +79,29 @@ struct EpDeviceInfo {
     /** Identity without the duplicate-device ordinal. */
     std::string baseKey() const;
 
+#if PHP_ORT_HAS_EP_DEVICE
     bool matches(const Ort::ConstEpDevice &device) const;
+#endif
 };
 
+#if PHP_ORT_HAS_EP_DEVICE
 EpDeviceInfo readEpDevice(const Ort::ConstEpDevice &device);
+#endif
 
 /**
  * Read every device and assign instance_ordinal to duplicate identities
- * exposed by the same EP.  This lets two otherwise identical plugin devices
- * retain distinct registry keys.
+ * exposed by the same EP.  Returns an empty list when the build targets an
+ * ONNX Runtime older than 1.23.
  */
 std::vector<EpDeviceInfo> readEpDevices(Ort::Env &env);
 
-std::vector<Ort::ConstEpDevice> getEpDevices(Ort::Env &env);
-
+#if PHP_ORT_HAS_EP_DEVICE
 /**
  * Resolve a snapshot to the current Env-owned OrtEpDevice.  Throws
  * ConversionError if the device disappeared (for example after unregister).
  */
 Ort::ConstEpDevice resolveEpDevice(Ort::Env &env, const EpDeviceInfo &info);
+#endif
 
 }  // namespace php_ort
 

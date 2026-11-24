@@ -1,7 +1,12 @@
 --TEST--
 Phase 7F async I/O binding: Task owns binding, buffers stay alive, results are built on the PHP thread
 --SKIPIF--
-<?php if (!extension_loaded('onnxruntime')) die('skip onnxruntime not loaded'); ?>
+<?php
+if (!extension_loaded('onnxruntime')) die('skip onnxruntime not loaded');
+if (!OnnxRuntime\Runtime::default()->supports('ep_device')) {
+    die('skip EP devices and device tensors require ONNX Runtime 1.23+ (API 23)');
+}
+?>
 --FILE--
 <?php
 function cuda_session(): ?OnnxRuntime\Session {

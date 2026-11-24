@@ -20,6 +20,24 @@ extern "C" {
 #define PHP_ONNXRUNTIME_EXTNAME "onnxruntime"
 #define PHP_ONNXRUNTIME_VERSION "0.4.11"
 
+/* Provided by config.m4/config.w32; keep the module buildable from IDE
+ * projects that do not include the generated config.h. */
+#ifndef PHP_ORT_BUILD_API_VERSION
+# define PHP_ORT_BUILD_API_VERSION 0
+#endif
+#ifndef PHP_ORT_ORT_VERSION
+# define PHP_ORT_ORT_VERSION "unknown"
+#endif
+#ifndef PHP_ORT_PACKAGE
+# define PHP_ORT_PACKAGE ""
+#endif
+#ifndef PHP_ORT_SOURCE
+# define PHP_ORT_SOURCE ""
+#endif
+
+#define PHP_ORT_STRINGIFY_IMPL(x) #x
+#define PHP_ORT_STRINGIFY(x) PHP_ORT_STRINGIFY_IMPL(x)
+
 extern zend_module_entry onnxruntime_module_entry;
 #define phpext_onnxruntime_ptr &onnxruntime_module_entry
 

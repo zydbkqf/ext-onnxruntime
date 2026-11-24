@@ -14,16 +14,12 @@ jobs:
         include:
           - os: ubuntu-24.04
             php-version: "8.5"
-            ort_archive: onnxruntime-linux-x64-1.28.2.tgz
           - os: ubuntu-24.04
             php-version: "8.6"
-            ort_archive: onnxruntime-linux-x64-1.28.2.tgz
           - os: macos-14
             php-version: "8.5"
-            ort_archive: onnxruntime-osx-arm64-1.28.2.tgz
           - os: macos-14
             php-version: "8.6"
-            ort_archive: onnxruntime-osx-arm64-1.28.2.tgz
 
     steps:
       - uses: actions/checkout@v4
@@ -33,22 +29,18 @@ jobs:
           php-version: ${{ matrix.php-version }}
           coverage: none
 
+      - name: Cache ONNX Runtime NuGet SDK
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ext-onnxruntime/nuget
+          key: ort-nuget-${{ runner.os }}-${{ runner.arch }}-cpu-1.32.0
+
       - name: Install Linux sanitizer toolchain
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y clang
 
-      - name: Download ONNX Runtime SDK
-        env:
-          ORT_ARCHIVE: ${{ matrix.ort_archive }}
-        run: |
-          curl -fsSL \
-            "https://github.com/microsoft/onnxruntime/releases/download/v1.28.2/${ORT_ARCHIVE}" \
-            -o "$RUNNER_TEMP/ort.tgz"
-          mkdir -p "$RUNNER_TEMP/ort"
-          tar -xzf "$RUNNER_TEMP/ort.tgz" -C "$RUNNER_TEMP/ort" --strip-components=1
-
       - name: Build and load smoke
-        run: bash tests/build-smoke.sh "$RUNNER_TEMP/ort"
+        run: bash tests/build-smoke.sh
 
       - name: Native sanitizers
         if: runner.os == 'Linux'

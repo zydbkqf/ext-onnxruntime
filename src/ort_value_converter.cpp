@@ -137,7 +137,11 @@ Tensor ortValueToTensor(const Ort::Value &value) {
         // Use ORT's actual byte count instead of assuming count * element_size.
         // tensor.validate() below still enforces the expected size for every
         // dtype this extension supports.
+#if ORT_API_VERSION >= 22
         size_t bytes = value.GetTensorSizeInBytes();
+#else
+        size_t bytes = count * element_size;
+#endif
         tensor.data.resize(bytes);
         if (bytes != 0) {
             const void *source = value.GetTensorRawData();

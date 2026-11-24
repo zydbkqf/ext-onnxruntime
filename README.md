@@ -43,39 +43,144 @@ The PHP code targets the Zend API in PHP 8.0–8.6 and rejects versions below 8.
 - PHP 8.x; verified with PHP 8.5.6 CLI ZTS, PHP 8.5.12 CLI NTS (Zend Module API `20250925`) and PHP 8.6.0 CLI ZTS (Zend Module API `20261112`)
 - `phpize` / `php-config` from the same PHP installation that will load the extension
 - A C++17 compiler (Apple clang on macOS; g++/clang++ on Linux)
-- An ONNX Runtime v1.28.2 (`ORT_API_VERSION 28`) **include + shared library** SDK
+- ONNX Runtime **1.18.0 or newer** for the core build (`ORT_API_VERSION >= 18`);
+  1.32.0 is the current default. The core surface is verified against 1.18, 1.20,
+  1.21, 1.23, 1.26 and 1.32; 1.17.3 also compiles and loads, but the bundled PHPT
+  fixtures are ONNX IR 10, which ORT 1.17 cannot parse (max IR 9), so 1.17 is not
+  claimed as verified.
+- The `EpDevice`/`DeviceTensor`/Plugin-EP API requires **1.23.0 or newer**.
+  Builds against 1.18–1.22 keep the same PHP class surface, but device-related
+  methods throw `requires ONNX Runtime 1.23 or newer`. There is no separate
+  "core" flavor: the same module adapts to whatever SDK version is supplied.
 
 ### Getting ONNX Runtime
 
-Download the official prebuilt package for your platform from the
-[v1.28.2 release](https://github.com/microsoft/onnxruntime/releases/tag/v1.28.2)
-and extract it:
+> **Why NuGet instead of GitHub Releases:** since 2025-11-17 Microsoft has made
+> `microsoft/onnxruntime`, `onnxruntime-genai`, `onnxruntime-extensions` and
+> related repositories private while it investigates the `agent-framework`
+> supply-chain incident. The official GitHub Release assets that this project
+> previously downloaded (`onnxruntime-linux-x64-1.28.2.tgz`,
+> `onnxruntime-osx-arm64-1.28.2.tgz`, …) now return **404**, and the GitHub
+> API reports the repository as missing. Builds therefore use the public
+> **NuGet flat-container** endpoint, which still serves versioned packages
+> containing both the headers (`build/native/include` or
+> `buildTransitive/native/include`) and the runtime/import libraries
+> (`runtimes/<rid>/native`).
 
-```text
-onnxruntime-<platform>-1.28.2/
-  include/onnxruntime_cxx_api.h
-  lib/libonnxruntime.*
-```
-
-The SDK root is passed to `configure`; `include/` and `lib/` are derived from
-that directory. The extension **does not vendor the ONNX Runtime source tree**
-and does not bake a platform-specific prebuilt library into the build scripts.
-
-`config.m4` verifies that `onnxruntime_cxx_api.h` and `libonnxruntime.*` exist.
-`--with-onnxruntime` is required; `./configure` fails instead of silently
-selecting a bundled library.
-
-## Build
-
-Standard external-SDK build:
+`./configure` downloads the SDK from NuGet by default:
 
 ```bash
 phpize
-./configure --with-onnxruntime=/opt/onnxruntime-linux-x64-1.28.2
+./configure                      # CPU package: Microsoft.ML.OnnxRuntime 1.32.0
+make -j8
+```
+
+Layout written to the NuGet cache (outside the source tree so `make clean`,
+which removes every `*.so`, cannot delete the SDK):
+
+```text
+${XDG_CACHE_HOME:-$HOME/.cache}/ext-onnxruntime/nuget/<package>.<version>/
+```
+
+`third_party/nuget` is a convenience symlink to that directory. Set
+`ONNXRUNTIME_NUGET_DIR` to relocate the cache.
+
+Contents:
+
+```text
+include/onnxruntime_cxx_api.h    # all public headers
+lib/libonnxruntime.*             # runtime library (+ provider libraries for GPU)
+```
+
+The NuGet package is cached; delete the directory to force a fresh download.
+
+Package selection:
+
+| Configure option | NuGet package | Default version |
+| --- | --- | --- |
+| *(none)* | `Microsoft.ML.OnnxRuntime` | `1.32.0` |
+| `--with-cuda12` | `Microsoft.ML.OnnxRuntime.Gpu.Linux` | `1.26.0` |
+| `--with-cuda13` | `Microsoft.ML.OnnxRuntime.Gpu.Linux` | `1.32.0` |
+| `--with-coreml` | `Microsoft.ML.OnnxRuntime` (macOS arm64) | `1.32.0` |
+
+Footnotes:
+
+- `--with-cuda12` / `--with-cuda13` are Linux x86_64 only. configure checks
+  `libcublas.so.<major>` and `libcudnn.so.9`; a missing runtime is a warning
+  because build machines often have no GPU driver. Set
+  `ONNXRUNTIME_STRICT_CUDA_CHECK=1` to make it fatal.
+- `--with-coreml` is macOS arm64 only. NuGet's macOS dylib already embeds the
+  CoreML EP; the flag asserts platform support and records the requirement.
+- Override the version with `ONNXRUNTIME_VERSION`,
+  `ONNXRUNTIME_CUDA12_VERSION` or `ONNXRUNTIME_CUDA13_VERSION`.
+- macOS x86_64 is not published on NuGet and is not supported by this build path.
+
+Three source modes:
+
+```bash
+./configure                                      # NuGet (default, CPU)
+./configure --with-onnxruntime                   # system headers/libs
+./configure --with-onnxruntime=/opt/ort-1.28.2   # explicit SDK directory
+```
+
+`--with-onnxruntime=DIR` accepts a directory with `include/` + `lib/`, or an
+already-unpacked SDK root. The bare `--with-onnxruntime` searches
+`pkg-config onnxruntime`, `/usr/include/onnxruntime`, `/usr/local/include`,
+`/opt/homebrew/include` and the usual library directories.
+
+Distribution development packages and their current versions:
+
+| Source | Package | Version | Core build | EP devices / CoreML |
+| --- | --- | --- | --- | --- |
+| apt (Debian 13 trixie) | `libonnxruntime-dev` | **1.21.0** | Yes | No (needs 1.23) |
+| dnf (Fedora 44) | `onnxruntime-devel` | **1.22.2** | Yes | No (needs 1.23) |
+| Homebrew (macOS arm64) | `onnxruntime` | **1.32.0** | Yes | Yes |
+| NuGet (`Microsoft.ML.OnnxRuntime`) | flat-container package | 1.17.3 – 1.32.0 | Yes | 1.23.2+ only |
+
+These can be used as the system source (`./configure --with-onnxruntime`); no
+NuGet download is needed. apt's 1.21 and dnf's 1.22 are fully usable for the
+core API (inference, IoBinding, async, batch), but `appendEpDevice`,
+`DeviceTensor`, Plugin EP registration and CoreML are unavailable there and
+throw a clear "requires ONNX Runtime 1.23" error at runtime. Debian sid / Ubuntu
+`resolute` ship 1.23.2 and Fedora Rawhide 1.26.0, which unlock the full API.
+Homebrew 1.32.0 includes CoreML and the full EP surface on macOS arm64.
+
+The CoreML EP itself exists in older macOS dylibs (1.20 reports
+`CoreMLExecutionProvider`), but those SDKs ship no CoreML appender in
+`onnxruntime_c_api.h`, so the extension only exposes CoreML from an ORT 1.23+
+SDK. `Runtime::supports('coreml')` reports this.
+
+`config.m4` validates that `onnxruntime_cxx_api.h` and `libonnxruntime.*` exist
+and refuses `ORT_API_VERSION < 18`. Capability code is guarded by
+`ORT_API_VERSION`, not by a separate flavor: 1.23+ enables `OrtEpDevice`,
+`OrtDeviceMemoryType`, Plugin EP registration and `CoreML`; older SDKs compile
+the core code paths and expose `Runtime::supports('ep_device'|'device_tensor'|
+'coreml'|'async')` so applications can branch instead of catching exceptions.
+
+## Build
+
+Standard build (NuGet CPU SDK):
+
+```bash
+phpize
+./configure
+make -j8
+```
+
+CUDA flavor:
+
+```bash
+./configure --with-cuda13
 make -j8
 ```
 
 Output: `modules/onnxruntime.so`
+
+When switching between `--with-onnxruntime`, `--with-cuda12` and
+`--with-cuda13`, run `make clean` after `./configure`: the generated config.h
+changes `ORT_API_VERSION`, and stale object files would otherwise link against
+the wrong API table. A mismatched module now aborts at startup with an explicit
+API-version error instead of crashing.
 
 ### Windows native build
 
@@ -91,7 +196,12 @@ Prerequisites:
 - ONNX Runtime **Windows x64** SDK containing `include\onnxruntime_cxx_api.h`
   and `lib\onnxruntime.lib`
 
-The Windows SDK root is passed as the same configure option.
+The Windows SDK root is passed as the same configure option.  Windows builds do
+not download NuGet automatically; if you start from a `.nupkg`, copy
+`buildTransitive/native/include/*.h` (or `build/native/include/*.h`) into
+`include\` and `runtimes/win-x64/native/*` into `lib\` first.  Use
+`Microsoft.ML.OnnxRuntime.Gpu.Windows` for CUDA/TensorRT (1.26.0 = CUDA 12,
+1.27+ = CUDA 13) or `Microsoft.ML.OnnxRuntime` for CPU.
 
 `config.w32` checks those paths and links only `onnxruntime.lib`. GPU provider
 DLLs (`onnxruntime_providers_cuda.dll`, `onnxruntime_providers_shared.dll`,
@@ -158,15 +268,19 @@ On WSL2 with an RTX 3050, a MatMul 512x2048x2048 ran 12.14 ms/run on CPU
 logs a `device_discovery.cc` warning on startup; PHPT must be run through a
 wrapper that filters it, otherwise every test fails on output mismatch.
 
-The repository's verified ORT baseline is **1.28.2**. ORT 1.32 can be used for
-Windows GPU experiments, but its provider/CUDA/cuDNN requirements differ and
-its results must be recorded as a separate OS/ORT baseline.
+The build now consumes ORT from NuGet by default and compiles against whichever
+version is supplied. Verified builds: **1.18.0**, **1.20.0**, **1.21.0** and
+**1.23.2** (macOS arm64 CPU, core API; EP APIs disabled below 1.23), **1.26.0**
+(linux-x64 CUDA 12 package), **1.28.2** (explicit macOS SDK), and **1.32.0**
+(NuGet CPU on macOS arm64 and linux-x64, NuGet CUDA 13 on linux-x64).
+ORT 1.32 changes the CUDA/cuDNN requirements (CUDA 13 + cuDNN 9); record GPU
+results per OS/ORT baseline.
 
 `config.m4` link policy:
 
 - macOS/BSD links `-lc++`; Linux links `-lstdc++` by default and switches to `-lc++` when `-stdlib=libc++` is explicitly present.
 - C++17 is required, with `ZEND_ENABLE_STATIC_TSRMLS_CACHE=1`.
-- No ORT rpath is written by default. Set `ONNXRUNTIME_RPATH` before `./configure` when a fixed runtime search path is required; otherwise use `DYLD_LIBRARY_PATH` / `LD_LIBRARY_PATH` as described below.
+- NuGet builds embed an rpath to the downloaded SDK (`${XDG_CACHE_HOME:-$HOME/.cache}/ext-onnxruntime/nuget/<package>/lib`), so no `DYLD_LIBRARY_PATH`/`LD_LIBRARY_PATH` is needed. Explicit-SDK and system builds write no rpath by default; set `ONNXRUNTIME_RPATH` before `./configure` when a fixed runtime search path is required, otherwise use `DYLD_LIBRARY_PATH` / `LD_LIBRARY_PATH` as described below.
 
 ### Install and PHP configuration
 
@@ -206,15 +320,19 @@ pecl install onnxruntime
 ### PIE (Composer)
 
 `composer.json` declares the package as `type: php-ext` with extension name
-`onnxruntime`, ZTS/NTS support, and the required `--with-onnxruntime=DIR` configure option.
-After the repository is submitted to Packagist, PIE can install it directly:
+`onnxruntime`, ZTS/NTS support, and the optional `--with-onnxruntime` configure
+option. After the repository is submitted to Packagist, PIE can install it
+directly:
 
 ```bash
+pie install zydbkqf/ext-onnxruntime              # NuGet CPU package
+pie install zydbkqf/ext-onnxruntime --with-cuda13
 pie install zydbkqf/ext-onnxruntime --with-onnxruntime=/opt/ort
 ```
 
-The ORT SDK is not bundled, so a source install needs the same external SDK as
-a manual `phpize` build. Windows PIE does not compile extensions on the fly:
+The ORT SDK is not bundled. By default PIE downloads the NuGet CPU package;
+pass `--with-onnxruntime=DIR` to use an existing SDK. Windows PIE does not
+compile extensions on the fly:
 it requires pre-built ZIP assets on the GitHub release for the tag. The
 `release-windows` workflow builds one ZIP per PHP version and ZTS/NTS mode,
 adds `onnxruntime.dll` to each ZIP, and uploads them to the release. The asset
@@ -396,7 +514,8 @@ Use `runAsync()` / `runWithBindingAsync()` only when the PHP process can wait fo
 | `getVersion(): string` | Return the ONNX Runtime version string |
 | `getBuildInfo(): string` | Return ONNX Runtime build information |
 | `getAvailableProviders(): string[]` | Return available EP names, such as `CPUExecutionProvider` |
-| `getEpDevices(): OnnxRuntime\EpDevice[]` | Return immutable device snapshots; use them with `SessionOptions::appendEpDevice()` |
+| `supports(string $feature): bool` | Capability probe for the SDK this module was compiled against: `ep_device`, `device_tensor`, `coreml`, `async`; returns `false` when the ORT version is too old |
+| `getEpDevices(): OnnxRuntime\EpDevice[]` | Return immutable device snapshots; use them with `SessionOptions::appendEpDevice()`; requires ORT 1.23+ |
 | `registerExecutionProviderLibrary(string $name, string $path): void` | Register a Plugin EP library; empty names/paths, NUL bytes, and duplicate registrations are rejected |
 | `unregisterExecutionProviderLibrary(string $name): void` | Unregister a Plugin EP library; an unknown name is rejected |
 | `setAsyncThreads(int $threads): void` | Configure native async worker count (1..64); must be before the first `runAsync()` |
@@ -485,12 +604,14 @@ It exercises 150 identity runs with a preallocated output buffer, 30 dynamic-sha
 Compile/load/basic Tensor/inference smoke:
 
 ```bash
-bash tests/build-smoke.sh /opt/onnxruntime-linux-x64-1.28.2
+bash tests/build-smoke.sh                  # NuGet CPU package
+bash tests/build-smoke.sh --with-cuda13   # NuGet CUDA 13 package
+bash tests/build-smoke.sh /opt/ort-sdk    # explicit SDK root
 ```
 
-Pass the extracted ONNX Runtime SDK root.
+With no directory the script lets `configure` download the NuGet package.
 
-The script runs `phpize --clean`, `phpize`, `configure --with-onnxruntime=DIR`, `make`, module loading, `Tensor::fromArray()`, `identity.onnx` inference, and the full PHPT suite. macOS adds an ad-hoc signature automatically.
+The script runs `phpize --clean`, `phpize`, `configure`, `make`, module loading, `Tensor::fromArray()`, `identity.onnx` inference, and the full PHPT suite. macOS adds an ad-hoc signature automatically.
 
 Native memory gate:
 

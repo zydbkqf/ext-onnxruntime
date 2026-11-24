@@ -1231,6 +1231,11 @@ ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(
 ZEND_END_ARG_INFO()
 
 ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(
+    arginfo_onnx_runtime_supports, 0, 1, _IS_BOOL, 0)
+    ZEND_ARG_TYPE_INFO(0, feature, IS_STRING, 0)
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(
     arginfo_onnx_runtime_register, 0, 2, IS_VOID, 0)
     ZEND_ARG_TYPE_INFO(0, name, IS_STRING, 0)
     ZEND_ARG_TYPE_INFO(0, path, IS_STRING, 0)
@@ -2183,9 +2188,14 @@ PHP_METHOD(OnnxRuntime_SessionOptions, appendEpDevice) {
         // Fail early if the Env-owned device disappeared (for example the
         // plugin was unregistered).  The final authoritative check happens
         // again when the Session is created.
+#if PHP_ORT_HAS_EP_DEVICE
         auto env = php_ort::environment();
         php_ort::resolveEpDevice(*env, *device_object->info);
         php_ort::validatePluginDevice(*device_object->info);
+#else
+        throw php_ort::ConversionError(
+            "appendEpDevice requires ONNX Runtime 1.23 or newer (API 23)");
+#endif
 
         php_ort::ExecutionProviderConfig provider;
         provider.kind = php_ort::ExecutionProviderKind::EpDevice;
@@ -2345,6 +2355,34 @@ PHP_METHOD(OnnxRuntime_Runtime, getBuildInfo) {
                              "failed to query ONNX Runtime build info");
         RETURN_THROWS();
     }
+}
+
+PHP_METHOD(OnnxRuntime_Runtime, supports) {
+    zend_string *feature = nullptr;
+    ZEND_PARSE_PARAMETERS_START(1, 1)
+        Z_PARAM_STR(feature)
+    ZEND_PARSE_PARAMETERS_END();
+
+#if PHP_ORT_HAS_EP_DEVICE
+    const bool ep_device = true;
+#else
+    const bool ep_device = false;
+#endif
+    const std::string name(ZSTR_VAL(feature), ZSTR_LEN(feature));
+    if (name == "ep_device" || name == "device_tensor") {
+        RETURN_BOOL(ep_device);
+    }
+    if (name == "coreml") {
+#if defined(__APPLE__) && ORT_API_VERSION >= 23
+        RETURN_TRUE;
+#else
+        RETURN_FALSE;
+#endif
+    }
+    if (name == "async") {
+        RETURN_TRUE;
+    }
+    RETURN_FALSE;
 }
 
 PHP_METHOD(OnnxRuntime_Runtime, getAvailableProviders) {
@@ -3523,6 +3561,8 @@ static const zend_function_entry onnx_runtime_methods[] = {
            arginfo_onnx_runtime_string_array, ZEND_ACC_PUBLIC)
     PHP_ME(OnnxRuntime_Runtime, getEpDevices,
            arginfo_onnx_runtime_ep_devices, ZEND_ACC_PUBLIC)
+    PHP_ME(OnnxRuntime_Runtime, supports,
+           arginfo_onnx_runtime_supports, ZEND_ACC_PUBLIC)
     PHP_ME(OnnxRuntime_Runtime, registerExecutionProviderLibrary,
            arginfo_onnx_runtime_register, ZEND_ACC_PUBLIC)
     PHP_ME(OnnxRuntime_Runtime, unregisterExecutionProviderLibrary,
@@ -3602,6 +3642,22 @@ static const zend_function_entry onnx_task_methods[] = {
 
 PHP_MINIT_FUNCTION(onnxruntime) {
     zend_class_entry ce;
+
+#if PHP_ORT_BUILD_API_VERSION > 0
+    /* The NuGet/system SDK can be swapped at runtime.  GetApi() returns
+     * nullptr when the loaded library is older than the build call table;
+     * fail loudly instead of dereferencing a stale OrtApi. */
+    if (OrtGetApiBase()->GetApi(PHP_ORT_BUILD_API_VERSION) == nullptr) {
+        zend_error_noreturn(E_CORE_ERROR,
+            "onnxruntime: the loaded ONNX Runtime %s does not provide API "
+            "version %d; this module was built against ONNX Runtime %s "
+            "(API %d). Install matching ONNX Runtime libraries or rebuild "
+            "the extension.",
+            OrtGetApiBase()->GetVersionString(),
+            PHP_ORT_BUILD_API_VERSION, PHP_ORT_ORT_VERSION,
+            PHP_ORT_BUILD_API_VERSION);
+    }
+#endif
 
     INIT_NS_CLASS_ENTRY(ce, "OnnxRuntime", "Exception", nullptr);
     onnx_exception_ce =
@@ -3754,8 +3810,22 @@ PHP_MINFO_FUNCTION(onnxruntime) {
     php_info_print_table_header(2, "onnxruntime support", "enabled");
     php_info_print_table_row(2, "extension version",
                              PHP_ONNXRUNTIME_VERSION);
-    php_info_print_table_row(2, "ONNX Runtime C API",
-                             "v1.28.2 (ORT_API_VERSION 28, linked)");
+    if (std::strcmp(PHP_ORT_ORT_VERSION, "unknown") == 0) {
+        php_info_print_table_row(
+            2, "ONNX Runtime C API",
+            "API " PHP_ORT_STRINGIFY(PHP_ORT_BUILD_API_VERSION) " (linked)");
+    } else {
+        php_info_print_table_row(2, "ONNX Runtime C API",
+                                 "v" PHP_ORT_ORT_VERSION " (ORT_API_VERSION "
+                                 PHP_ORT_STRINGIFY(PHP_ORT_BUILD_API_VERSION)
+                                 ", linked)");
+    }
+    php_info_print_table_row(2, "ONNX Runtime source",
+                             PHP_ORT_SOURCE[0] != '\0' ? PHP_ORT_SOURCE
+                                                      : "external SDK");
+    if (PHP_ORT_PACKAGE[0] != '\0') {
+        php_info_print_table_row(2, "NuGet package", PHP_ORT_PACKAGE);
+    }
     php_info_print_table_row(2, "phase",
                              "7: advanced inference and memory management");
     php_info_print_table_end();

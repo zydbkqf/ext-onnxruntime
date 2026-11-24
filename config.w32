@@ -54,6 +54,27 @@ if (!FSO.FileExists(ort_lib + "\\onnxruntime.lib")) {
 	ERROR("onnxruntime.lib not found in " + ort_lib);
 }
 
+// Read the API version so the module can refuse an older runtime at startup
+// and report the right version in phpinfo().
+var ort_header = FSO.OpenTextFile(ort_include + "\\onnxruntime_c_api.h", 1);
+var ort_header_text = ort_header.ReadAll();
+ort_header.Close();
+var ort_api_match = ort_header_text.match(/#define[ \t]+ORT_API_VERSION[ \t]+([0-9]+)/);
+if (!ort_api_match) {
+	ERROR("could not read ORT_API_VERSION from " + ort_include + "\\onnxruntime_c_api.h");
+}
+var ort_api_version = parseInt(ort_api_match[1], 10);
+if (ort_api_version < 23) {
+	ERROR("ONNX Runtime API version " + ort_api_version + " is too old; 1.18 or newer is required. EP-device features need 1.23+.");
+}
+
+var ort_version = "unknown";
+if (FSO.FileExists(ort_root + "\\VERSION_NUMBER")) {
+	var version_file = FSO.OpenTextFile(ort_root + "\\VERSION_NUMBER", 1);
+	ort_version = version_file.ReadAll().replace(/[\r\n]+$/, "");
+	version_file.Close();
+}
+
 ADD_FLAG("LDFLAGS_ONNXRUNTIME", "/LIBPATH:\"" + ort_lib + "\"");
 ADD_FLAG("LIBS_ONNXRUNTIME", "onnxruntime.lib");
 ADD_FLAG("CFLAGS_BD_", "/Fo$(BUILD_DIR)\\src\\");
@@ -69,3 +90,9 @@ EXTENSION("onnxruntime",
 
 AC_DEFINE("HAVE_ONNXRUNTIME", 1,
 	"Define to 1 if the ONNX Runtime extension is available.");
+AC_DEFINE("PHP_ORT_BUILD_API_VERSION", ort_api_version,
+	"ORT_API_VERSION used for the build.");
+AC_DEFINE("PHP_ORT_ORT_VERSION", '"' + ort_version + '"',
+	"ONNX Runtime version used for the build.");
+AC_DEFINE("PHP_ORT_SOURCE", '"dir"',
+	"Where the ONNX Runtime SDK came from.");

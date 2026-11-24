@@ -1,7 +1,12 @@
 --TEST--
 Runtime exposes ORT version/build info, available providers, and immutable EP devices
 --SKIPIF--
-<?php if (!extension_loaded('onnxruntime')) die('skip onnxruntime not loaded'); ?>
+<?php
+if (!extension_loaded('onnxruntime')) die('skip onnxruntime not loaded');
+if (!OnnxRuntime\Runtime::default()->supports('ep_device')) {
+    die('skip EP devices and device tensors require ONNX Runtime 1.23+ (API 23)');
+}
+?>
 --FILE--
 <?php
 $r = OnnxRuntime\Runtime::default();

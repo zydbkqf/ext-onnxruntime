@@ -67,5 +67,6 @@
 /php-8.5.12/
 /logs/
 /third_party/onnxruntime/
+/third_party/nuget
 /docs/*
 !/docs/LINUX-ARM64-BASELINE.md

@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
-# Build, load, and smoke-test the extension against an ONNX Runtime SDK.
+# Build, load, and smoke-test the extension.
 #
 # Usage:
-#   bash tests/build-smoke.sh /opt/onnxruntime-linux-x64-1.28.2
+#   bash tests/build-smoke.sh                 # NuGet CPU package (default)
+#   bash tests/build-smoke.sh /opt/ort-sdk    # explicit SDK directory
+#   bash tests/build-smoke.sh --with-cuda13   # extra configure flags
 #
-# The directory must be the extracted ONNX Runtime prebuilt package root
-# containing include/ and lib/. ONNXRUNTIME_ROOT is accepted as a fallback.
+# With no directory the configure script downloads the CPU package from
+# nuget.org.  A directory is forwarded as --with-onnxruntime=DIR; any further
+# arguments (for example --with-cuda13) are passed through to configure.
+# ONNXRUNTIME_ROOT is accepted as a fallback for the directory.
 
 set -euo pipefail
 
@@ -13,29 +17,50 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PHP_BIN="${PHP_BIN:-php}"
 JOBS="${JOBS:-8}"
 MODULE="$ROOT/modules/onnxruntime.so"
-ORT_ROOT="${1:-${ONNXRUNTIME_ROOT:-}}"
+
+ORT_ROOT=""
+CONFIGURE_ARGS=()
+
+for arg in "$@"; do
+    case "$arg" in
+        --with-*)
+            CONFIGURE_ARGS+=("$arg")
+            ;;
+        *)
+            if [[ -z "$ORT_ROOT" ]]; then
+                ORT_ROOT="$arg"
+            else
+                CONFIGURE_ARGS+=("$arg")
+            fi
+            ;;
+    esac
+done
 
 if [[ -z "$ORT_ROOT" ]]; then
-    echo "build-smoke: pass the ONNX Runtime SDK root, e.g. bash tests/build-smoke.sh /opt/onnxruntime-linux-x64-1.28.2" >&2
-    echo "build-smoke: or set ONNXRUNTIME_ROOT" >&2
-    exit 2
+    ORT_ROOT="${ONNXRUNTIME_ROOT:-}"
 fi
 
 cd "$ROOT"
 
 phpize --clean
 phpize
-./configure --with-onnxruntime="$ORT_ROOT"
+if [[ -n "$ORT_ROOT" ]]; then
+    ./configure --with-onnxruntime="$ORT_ROOT" ${CONFIGURE_ARGS[@]+"${CONFIGURE_ARGS[@]}"}
+else
+    ./configure ${CONFIGURE_ARGS[@]+"${CONFIGURE_ARGS[@]}"}
+fi
 make -j"$JOBS"
 
 if [[ "$(uname -s)" == "Darwin" ]]; then
     codesign --force --sign - "$MODULE"
 fi
 
-# Let a locally downloaded ORT SDK satisfy the runtime loader even when no
-# rpath was embedded at configure time.
-export DYLD_LIBRARY_PATH="$ORT_ROOT/lib${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}"
-export LD_LIBRARY_PATH="$ORT_ROOT/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+# An explicit SDK directory needs a runtime search path; NuGet builds already
+# carry an rpath to the downloaded SDK.
+if [[ -n "$ORT_ROOT" ]]; then
+    export DYLD_LIBRARY_PATH="$ORT_ROOT/lib${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}"
+    export LD_LIBRARY_PATH="$ORT_ROOT/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+fi
 
 "$PHP_BIN" -n -d "extension=$MODULE" --ri onnxruntime >/dev/null
 BUILD_SMOKE_FIXTURE="$ROOT/tests/fixtures/identity.onnx" \

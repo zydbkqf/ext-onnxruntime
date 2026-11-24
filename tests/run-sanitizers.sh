@@ -15,8 +15,21 @@ cxx="${CXX:-clang++}"
 asan_out="/tmp/ort_native_stress_asan"
 plain_out="/tmp/ort_native_stress"
 
+ort_include="${ONNXRUNTIME_INCLUDE:-}"
+if [[ -z "$ort_include" ]]; then
+    if [[ -d "$root/third_party/onnxruntime/include" ]]; then
+        ort_include="$root/third_party/onnxruntime/include"
+    else
+        ort_include="$(find "$root/third_party/nuget" -maxdepth 2 -type d -name include 2>/dev/null | head -n 1)"
+    fi
+fi
+if [[ -z "$ort_include" ]]; then
+    echo "run-sanitizers: ONNX Runtime headers not found; run ./configure first" >&2
+    exit 2
+fi
+
 "$cxx" -std=c++17 -g -O1 -fno-omit-frame-pointer -fsanitize=address \
-    -I src -I third_party/onnxruntime/include \
+    -I src -I "$ort_include" \
     tests/native_stress.cpp src/onnx_tensor.cpp -o "$asan_out"
 
 if [ "$(uname -s)" = "Linux" ]; then
@@ -29,7 +42,7 @@ else
 fi
 
 if command -v valgrind >/dev/null 2>&1; then
-    "$cxx" -std=c++17 -g -O1 -I src -I third_party/onnxruntime/include \
+    "$cxx" -std=c++17 -g -O1 -I src -I "$ort_include" \
         tests/native_stress.cpp src/onnx_tensor.cpp -o "$plain_out"
     valgrind --quiet --leak-check=full --errors-for-leak-kinds=definite \
         --error-exitcode=1 "$plain_out"

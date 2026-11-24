@@ -3,6 +3,9 @@ Phase 7C/7D device tensor allocation and copies on a CUDA Plugin EP device
 --SKIPIF--
 <?php
 if (!extension_loaded('onnxruntime')) die('skip onnxruntime not loaded');
+if (!OnnxRuntime\Runtime::default()->supports('ep_device')) {
+    die('skip EP devices and device tensors require ONNX Runtime 1.23+ (API 23)');
+}
 if (PHP_OS_FAMILY !== 'Windows') die('skip CUDA Plugin EP test is Windows-only');
 $dll = getenv('ONNXRUNTIME_CUDA_PLUGIN');
 if ($dll === false || $dll === '') {

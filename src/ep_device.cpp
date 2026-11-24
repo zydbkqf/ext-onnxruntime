@@ -9,6 +9,7 @@
 namespace php_ort {
 namespace {
 
+#if PHP_ORT_HAS_EP_DEVICE
 std::map<std::string, std::string> readKeyValueMap(
     const Ort::ConstKeyValuePairs &pairs) {
     std::map<std::string, std::string> result;
@@ -20,6 +21,7 @@ std::map<std::string, std::string> readKeyValueMap(
     }
     return result;
 }
+#endif
 
 std::string encodeKeyPart(const std::string &value) {
     std::ostringstream out;
@@ -60,6 +62,7 @@ std::string EpDeviceInfo::key() const {
     return out.str();
 }
 
+#if PHP_ORT_HAS_EP_DEVICE
 bool EpDeviceInfo::matches(const Ort::ConstEpDevice &device) const {
     if (!device) {
         return false;
@@ -87,7 +90,9 @@ bool EpDeviceInfo::matches(const Ort::ConstEpDevice &device) const {
     return ep_metadata == readKeyValueMap(device.EpMetadata()) &&
            ep_options == readKeyValueMap(device.EpOptions());
 }
+#endif
 
+#if PHP_ORT_HAS_EP_DEVICE
 EpDeviceInfo readEpDevice(const Ort::ConstEpDevice &device) {
     if (!device) {
         throw ConversionError("ORT returned a null EP device");
@@ -112,8 +117,10 @@ EpDeviceInfo readEpDevice(const Ort::ConstEpDevice &device) {
     info.ep_options = readKeyValueMap(device.EpOptions());
     return info;
 }
+#endif
 
 std::vector<EpDeviceInfo> readEpDevices(Ort::Env &env) {
+#if PHP_ORT_HAS_EP_DEVICE
     std::vector<EpDeviceInfo> result;
     std::map<std::string, uint32_t> ordinals;
     for (const auto &device : env.GetEpDevices()) {
@@ -123,12 +130,13 @@ std::vector<EpDeviceInfo> readEpDevices(Ort::Env &env) {
         result.push_back(std::move(info));
     }
     return result;
+#else
+    (void)env;
+    return {};
+#endif
 }
 
-std::vector<Ort::ConstEpDevice> getEpDevices(Ort::Env &env) {
-    return env.GetEpDevices();
-}
-
+#if PHP_ORT_HAS_EP_DEVICE
 Ort::ConstEpDevice resolveEpDevice(Ort::Env &env, const EpDeviceInfo &info) {
     // Enumerate with ordinals so a snapshot for the second of two identical
     // devices cannot silently resolve to the first one.
@@ -145,5 +153,6 @@ Ort::ConstEpDevice resolveEpDevice(Ort::Env &env, const EpDeviceInfo &info) {
         "EP device is not available: " + info.ep_name +
         "; it may have been unregistered or the device may have disappeared");
 }
+#endif
 
 }  // namespace php_ort
