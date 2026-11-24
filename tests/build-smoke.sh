@@ -4,6 +4,7 @@
 # Usage:
 #   bash tests/build-smoke.sh                 # NuGet CPU package (default)
 #   bash tests/build-smoke.sh /opt/ort-sdk    # explicit SDK directory
+#   bash tests/build-smoke.sh --enable-debug  # any other --flag is passed to configure
 #   bash tests/build-smoke.sh --with-cuda13   # extra configure flags
 #
 # With no directory the configure script downloads the CPU package from
@@ -23,14 +24,22 @@ CONFIGURE_ARGS=()
 
 for arg in "$@"; do
     case "$arg" in
-        --with-*)
+        --with-onnxruntime=*)
+            if [[ -n "$ORT_ROOT" ]]; then
+                echo "build-smoke: SDK directory was given twice: $ORT_ROOT and ${arg#*=}" >&2
+                exit 2
+            fi
+            ORT_ROOT="${arg#*=}"
+            ;;
+        --*)
             CONFIGURE_ARGS+=("$arg")
             ;;
         *)
             if [[ -z "$ORT_ROOT" ]]; then
                 ORT_ROOT="$arg"
             else
-                CONFIGURE_ARGS+=("$arg")
+                echo "build-smoke: unexpected extra argument: $arg" >&2
+                exit 2
             fi
             ;;
     esac
@@ -40,6 +49,10 @@ if [[ -z "$ORT_ROOT" ]]; then
     ORT_ROOT="${ONNXRUNTIME_ROOT:-}"
 fi
 if [[ -n "$ORT_ROOT" ]]; then
+    if [[ ! -d "$ORT_ROOT" ]]; then
+        echo "build-smoke: ONNX Runtime SDK directory does not exist: $ORT_ROOT" >&2
+        exit 2
+    fi
     ORT_ROOT="$(cd "$ORT_ROOT" && pwd)"
     # SIP-protected /usr/bin/make strips DYLD_LIBRARY_PATH before running PHP,
     # which made the directory build report every test as skipped.  Bake the

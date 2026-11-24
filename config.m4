@@ -177,6 +177,23 @@ if test "$ort_source" = "nuget"; then
     fi
     if test "$ort_os" = "linux" && test -f "$ort_alias_dir/libonnxruntime.so"; then
       ( cd "$ort_alias_dir" && ln -sf libonnxruntime.so libonnxruntime.so.1 )
+      if command -v objdump >/dev/null 2>&1; then
+        ort_soname=$(objdump -p "$ort_alias_dir/libonnxruntime.so" 2>/dev/null | awk '/SONAME/ {print $2; exit}')
+      elif command -v readelf >/dev/null 2>&1; then
+        dnl readelf prints "Library soname: [libonnxruntime.so.1]"; strip the
+        dnl first and last character instead of matching literal brackets (m4
+        dnl treats [] as quote characters).
+        ort_soname=$(readelf -d "$ort_alias_dir/libonnxruntime.so" 2>/dev/null | sed -n 's/.*soname: //p' | sed 's/^.//' | sed 's/.$//' | head -n 1)
+      else
+        ort_soname=""
+      fi
+      case "$ort_soname" in
+        lib*.so*)
+          if test "$ort_soname" != "libonnxruntime.so"; then
+            ( cd "$ort_alias_dir" && ln -sf libonnxruntime.so "$ort_soname" )
+          fi
+          ;;
+      esac
     fi
   }
 
