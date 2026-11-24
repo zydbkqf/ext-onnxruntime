@@ -14,9 +14,9 @@
   <email>denischeung@users.noreply.github.com</email>
   <active>yes</active>
  </lead>
- <date>2026-11-23</date>
+ <date>2026-11-24</date>
  <version>
-  <release>0.4.11</release>
+  <release>0.4.12</release>
   <api>0.4.0</api>
  </version>
  <stability>
@@ -24,7 +24,7 @@
   <api>beta</api>
  </stability>
  <license uri="https://opensource.org/licenses/MIT">MIT</license>
- <notes>Adds PHP 8.6 support: PHP 8.6 removed the legacy XtOffsetOf() macro, so the extension now uses offsetof() through a version-guarded compat macro (PHP 8.0-8.5 keep using XtOffsetOf); composer.json accepts PHP &lt;8.7. Build with a required --with-onnxruntime=DIR pointing at the extracted ONNX Runtime prebuilt package. Includes synchronous and asynchronous inference, CPU I/O Binding, fixed-shape preallocated output, device tensors, explicit device copies, explicit batch inference and async I/O Binding. Routes appendExecutionProvider('CUDA') and ('TensorRT') through the dedicated ORT appenders instead of the generic name-based one, which rejects those names; verified on Windows with CUDA and TensorRT inference. Also hardens DeviceTensor/Plugin EP lifetime ordering, releases queue capacity on cancelled tasks, and makes Task timeout conversion and worker-pool construction overflow/exception safe.</notes>
+ <notes>Sources ONNX Runtime from NuGet by default: omitting --with-onnxruntime downloads the Microsoft.ML.OnnxRuntime CPU package, --with-cuda12/--with-cuda13 select the Linux GPU packages (1.26.0 = CUDA 12, 1.32.0 = CUDA 13), and --with-coreml asserts CoreML on macOS arm64. A bare --with-onnxruntime still searches the system SDK. The core build now compiles against ONNX Runtime 1.18+ and gates EP-device, DeviceTensor, Plugin EP and CoreML behind ORT 1.23, so apt 1.21 / dnf 1.22 development packages are usable for the core API while older SDKs throw clear runtime errors for device operations. The NuGet cache moved outside the source tree so make clean cannot delete the SDK. Windows release workflows fetch CPU/CUDA NuGet packages directly and cover PHP 8.6. PHP 8.6 compatibility and the existing synchronous/asynchronous inference, IoBinding, batch and Plugin EP features are preserved.</notes>
  <contents>
   <dir name="/">
    <file name="config.m4" role="src"/>
