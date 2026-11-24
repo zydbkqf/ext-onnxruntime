@@ -14,11 +14,7 @@ jobs:
       matrix:
         include:
           - os: ubuntu-24.04
-            php-version: "8.5"
-          - os: ubuntu-24.04
             php-version: "8.6"
-          - os: macos-15
-            php-version: "8.5"
           - os: macos-15
             php-version: "8.6"
 
