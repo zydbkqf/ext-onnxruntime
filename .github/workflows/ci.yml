@@ -60,31 +60,38 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build and test in FreeBSD
+      - name: Start FreeBSD VM
+        id: vm
         uses: vmactions/freebsd-vm@v1
         with:
           release: "14.5"
           copyback: false
-          prepare: |
-            pkg install -y php85 onnxruntime autoconf gmake pkgconf unzip curl bash
-          run: |
-            set -eux
-            php -v
-            php-config --version
-            pkg info php85 onnxruntime | grep -E '^(Name|Version)'
 
-            # ONNX Runtime 1.30 prints a cpuinfo warning to stderr during
-            # startup on FreeBSD, which would otherwise break every PHPT diff.
-            cat > /tmp/php-ort-wrap <<'EOF'
-            #!/bin/sh
-            tmp=$(mktemp /tmp/php-ort.XXXXXX) || exit 1
-            /usr/local/bin/php "$@" 2>"$tmp"
-            status=$?
-            grep -v -E 'cpuid_info.cc|Unknown CPU vendor|cpuinfo_vendor value' "$tmp" >&2
-            rm -f "$tmp"
-            exit $status
-            EOF
-            chmod +x /tmp/php-ort-wrap
-            mkdir -p /tmp/freebsd-bin
-            ln -sf /usr/local/bin/gmake /tmp/freebsd-bin/make
-            PATH=/tmp/freebsd-bin:$PATH PHP_BIN=/tmp/php-ort-wrap bash tests/build-smoke.sh /usr/local
+      - name: Install packages in FreeBSD
+        shell: freebsd {0}
+        run: |
+          set -eux
+          pkg install -y php85 onnxruntime autoconf gmake pkgconf unzip curl bash
+          php -v
+          php-config --version
+          pkg info php85 onnxruntime | grep -E '^(Name|Version)'
+
+      - name: Build and test in FreeBSD
+        shell: freebsd {0}
+        run: |
+          set -eux
+          # ONNX Runtime 1.30 prints a cpuinfo warning to stderr during
+          # startup on FreeBSD, which would otherwise break every PHPT diff.
+          cat > /tmp/php-ort-wrap <<'EOF'
+          #!/bin/sh
+          tmp=$(mktemp /tmp/php-ort.XXXXXX) || exit 1
+          /usr/local/bin/php "$@" 2>"$tmp"
+          status=$?
+          grep -v -E 'cpuid_info.cc|Unknown CPU vendor|cpuinfo_vendor value' "$tmp" >&2
+          rm -f "$tmp"
+          exit $status
+          EOF
+          chmod +x /tmp/php-ort-wrap
+          mkdir -p /tmp/freebsd-bin
+          ln -sf /usr/local/bin/gmake /tmp/freebsd-bin/make
+          PATH=/tmp/freebsd-bin:$PATH PHP_BIN=/tmp/php-ort-wrap bash tests/build-smoke.sh /usr/local
