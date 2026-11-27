@@ -1592,6 +1592,14 @@ static bool php_ort_parse_buffer_options(zval *options_arg,
                                         "number", fn);
                 return false;
             }
+            /* NaN/Inf would poison every element silently, so the value is
+             * rejected here, before any tensor storage is allocated. */
+            if (!std::isfinite(options.scale)) {
+                zend_throw_exception_ex(
+                    zend_ce_value_error, 0,
+                    "%s() option \"scale\" must be a finite number", fn);
+                return false;
+            }
         } else if ((allowed & kBufferOptNormalise) &&
                    (zend_string_equals_literal_ci(key, "mean") ||
                     zend_string_equals_literal_ci(key, "std"))) {
@@ -1604,6 +1612,28 @@ static bool php_ort_parse_buffer_options(zval *options_arg,
                     "%s() option \"%s\" must be a number or a list of numbers",
                     fn, ZSTR_VAL(key));
                 return false;
+            }
+            for (double entry : target) {
+                if (!std::isfinite(entry)) {
+                    zend_throw_exception_ex(
+                        zend_ce_value_error, 0,
+                        "%s() option \"%s\" must contain only finite numbers",
+                        fn, ZSTR_VAL(key));
+                    return false;
+                }
+            }
+            /* A zero (or negative) divisor turns the whole tensor into
+             * Inf/NaN; the formula is (x * scale - mean) / std. */
+            if (!is_mean) {
+                for (double entry : target) {
+                    if (entry <= 0.0) {
+                        zend_throw_exception_ex(
+                            zend_ce_value_error, 0,
+                            "%s() option \"std\" must be greater than zero",
+                            fn);
+                        return false;
+                    }
+                }
             }
         } else if ((allowed & kBufferOptStream) && offset != nullptr &&
                    zend_string_equals_literal_ci(key, "offset")) {
