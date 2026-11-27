@@ -31,7 +31,7 @@ OV plugin   1.8.1, CPU device, INFERENCE_NUM_THREADS=2 from load_config
 | --- | --- |
 | PHP 8.5 | NTS is fine. The example was run on `php:8.5-cli` (PHP 8.5.13). |
 | GD | `--with-freetype --with-jpeg`. Only `imagecreatefromjpeg`, `imagecopyresampled`, `imagebmp` are used. |
-| Extension | `ext-onnxruntime` 0.4.14+, built against **ORT 1.32.0** (see [EP-OPENVINO.md](EP-OPENVINO.md) for the plugin/ORT version rule). |
+| Extension | `ext-onnxruntime` 0.4.15+, built against **ORT 1.32.0** (see [EP-OPENVINO.md](EP-OPENVINO.md) for the plugin/ORT version rule). |
 | OpenVINO plugin | `Intel.ML.OnnxRuntime.EP.OpenVINO` **1.8.1**, unpacked to `runtimes/linux-x64/native/`. |
 | Models | YOLO11n and PP-OCRv4 det/rec, plus the rec dictionary — see below. All three have dynamic H/W inputs. |
 | Image | Any JPEG. The doc uses a 1280x1601 street photo. |

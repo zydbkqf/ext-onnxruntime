@@ -52,6 +52,37 @@ jobs:
         if: runner.os == 'Linux'
         run: bash tests/run-sanitizers.sh
 
+  compat:
+    name: compat-php-${{ matrix.php-version }} (build only)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        php-version: ["8.0", "8.4"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php-version }}
+          coverage: none
+
+      - name: Cache ONNX Runtime NuGet SDK
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ext-onnxruntime/nuget
+          key: ort-nuget-${{ runner.os }}-${{ runner.arch }}-cpu-1.32.0
+
+      - name: Build against PHP ${{ matrix.php-version }}
+        run: |
+          set -euo pipefail
+          phpize --clean
+          phpize
+          ./configure
+          make -j8
+          php -n -d extension="$PWD/modules/onnxruntime.so" --ri onnxruntime >/dev/null
+
   windows:
     name: windows-2025 (PHP 8.5, advisory)
     runs-on: windows-2025

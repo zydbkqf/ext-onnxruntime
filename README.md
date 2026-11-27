@@ -40,7 +40,7 @@ added the byte-buffer API coverage and run on every platform, so the current
 totals are 6 higher per row (44 tests overall; macOS 8.6 is re-measured at
 41/44). Rows are re-run per release, not per commit.
 
-The PHP code targets the Zend API in PHP 8.0–8.6 and rejects versions below 8.0 at compile time. Verified environments: macOS arm64 PHP 8.5.6 ZTS, PHP 8.5.12 NTS (Homebrew) and PHP 8.6.0 ZTS; Linux x86_64 PHP 8.5.12 NTS and ZTS (current feature set, Swoole 6.2.1 on ZTS), and the same two builds against the ORT 1.28.2 CUDA 13 GPU package, where the built-in CUDA EP runs inference; Linux arm64 PHP 8.5.12 NTS and ZTS (ORT 1.28.2 aarch64 CPU SDK, source-built PHP); Windows x86_64 PHP 8.5.12 ZTS and NTS with VS 2026 + MSVC 14.44 and ORT 1.28.2, including CUDA and TensorRT inference on an RTX 3050; FreeBSD 14.5 x86_64 PHP 8.5.12 NTS with the `onnxruntime` 1.30.0 package (CPU only; see `docs/FREEBSD.md`). On Linux arm64 and FreeBSD the ORT prebuilt library prints a `cpuid_info` warning on stderr when the process-wide logger is raised above `error` (the default in 0.4.14); with `ONNXRUNTIME_LOG_LEVEL=warning` PHPT must then be run through a wrapper that filters that line — see `docs/LINUX-ARM64-BASELINE.md` and `docs/FREEBSD.md`; without it every test fails on output mismatch, not on behaviour. Debug builds and other unlisted combinations are not claimed as supported. `phpize`/`php-config` determine the ZTS/NTS and Debug/Release configuration; the resulting module must be installed into the extension_dir of the same PHP build and loaded by that same `php` binary.
+The PHP code targets the Zend API in PHP 8.0–8.6 and rejects versions below 8.0 at compile time. Verified environments: macOS arm64 PHP 8.5.6 ZTS, PHP 8.5.12 NTS (Homebrew) and PHP 8.6.0 ZTS; Linux x86_64 PHP 8.5.12 NTS and ZTS (current feature set, Swoole 6.2.1 on ZTS), and the same two builds against the ORT 1.28.2 CUDA 13 GPU package, where the built-in CUDA EP runs inference; Linux arm64 PHP 8.5.12 NTS and ZTS (ORT 1.28.2 aarch64 CPU SDK, source-built PHP); Windows x86_64 PHP 8.5.12 ZTS and NTS with VS 2026 + MSVC 14.44 and ORT 1.28.2, including CUDA and TensorRT inference on an RTX 3050; FreeBSD 14.5 x86_64 PHP 8.5.12 NTS with the `onnxruntime` 1.30.0 package (CPU only; see `docs/FREEBSD.md`). On Linux arm64 and FreeBSD the ORT prebuilt library prints a `cpuid_info` warning on stderr when the process-wide logger is raised above `error` (the default since 0.4.14); with `ONNXRUNTIME_LOG_LEVEL=warning` PHPT must then be run through a wrapper that filters that line — see `docs/LINUX-ARM64-BASELINE.md` and `docs/FREEBSD.md`; without it every test fails on output mismatch, not on behaviour. Debug builds and other unlisted combinations are not claimed as supported. `phpize`/`php-config` determine the ZTS/NTS and Debug/Release configuration; the resulting module must be installed into the extension_dir of the same PHP build and loaded by that same `php` binary.
 
 ## Requirements
 
@@ -400,7 +400,7 @@ Or load it for a single command:
 php -d extension=onnxruntime.so --ri onnxruntime
 ```
 
-`php --ri onnxruntime` should report extension version `0.4.14`. Use `php -n -d extension=...` to exclude unrelated ini settings while debugging.
+`php --ri onnxruntime` should report extension version `0.4.15`. Use `php -n -d extension=...` to exclude unrelated ini settings while debugging.
 
 ### PECL
 
@@ -415,7 +415,7 @@ pecl install onnxruntime
 `composer.json` declares the package as `type: php-ext` with extension name
 `onnxruntime`, ZTS/NTS support, and the optional `--with-onnxruntime` configure
 option. As of 2026-11-27 the package is published on Packagist as
-`zydbkqf/ext-onnxruntime` with tag `0.4.14` recognized, so PIE can install it
+`zydbkqf/ext-onnxruntime` with tag `0.4.15` recognized, so PIE can install it
 directly:
 
 ```bash
@@ -433,7 +433,7 @@ Windows PIE requires pre-built ZIP assets on the GitHub release for the tag. The
 `release-windows` workflow builds one ZIP per PHP version and ZTS/NTS mode,
 adds `onnxruntime.dll` to each ZIP, and uploads them to the release. The asset
 name follows the PIE Windows convention, for example
-`php_onnxruntime-0.4.14-8.5-nts-vs17-x86_64.zip`; the toolset suffix tracks the
+`php_onnxruntime-0.4.15-8.5-nts-vs17-x86_64.zip`; the toolset suffix tracks the
 PHP version (`vs16` for 8.0–8.3, `vs17` for 8.4–8.5, `vs18` for 8.6).
 
 The default PIE asset is the CPU build. CUDA 12 and CUDA 13 builds are
@@ -441,8 +441,8 @@ published as additional assets with a variant suffix, because PIE has no
 variant field in its Windows asset name:
 
 ```text
-php_onnxruntime-0.4.14-8.5-nts-vs17-x86_64-cuda12.zip
-php_onnxruntime-0.4.14-8.5-nts-vs17-x86_64-cuda13.zip
+php_onnxruntime-0.4.15-8.5-nts-vs17-x86_64-cuda12.zip
+php_onnxruntime-0.4.15-8.5-nts-vs17-x86_64-cuda13.zip
 ```
 
 `pie install` always selects the CPU asset. If you need CUDA, download the
@@ -453,7 +453,7 @@ other DLLs in the ZIP) into your PHP `extension_dir`. The CUDA build still
 requires a matching NVIDIA driver plus the CUDA Toolkit and cuDNN runtime;
 those are not bundled in the PIE ZIP.
 
-The `0.4.14` tag is published: Packagist resolves it to that version, and the
+The `0.4.15` tag is published: Packagist resolves it to that version, and the
 GitHub release for the tag carries one CPU ZIP plus `-cuda12` / `-cuda13`
 variants for PHP 8.0 through 8.6 in both NTS and ZTS modes (42 assets). PIE
 therefore installs the CPU build by default without any extra step; CUDA

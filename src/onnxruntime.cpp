@@ -1793,7 +1793,14 @@ PHP_METHOD(OnnxRuntime_Tensor, fromStream) {
         RETURN_THROWS();
     }
 
+    /* PHP 8.5 split the old helper: php_stream_from_zval_no_verify() no longer
+     * exists and the non-throwing variant is the one that returns nullptr
+     * instead of raising.  Older versions only have the original name. */
+#if PHP_VERSION_ID >= 80500
     php_stream *stream = php_stream_from_zval_no_verify_no_error(stream_arg);
+#else
+    php_stream *stream = php_stream_from_zval_no_verify(stream_arg);
+#endif
     if (stream == nullptr) {
         zend_throw_exception(zend_ce_value_error,
                              "fromStream() could not resolve the stream "
