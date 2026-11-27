@@ -1799,7 +1799,9 @@ PHP_METHOD(OnnxRuntime_Tensor, fromStream) {
 #if PHP_VERSION_ID >= 80500
     php_stream *stream = php_stream_from_zval_no_verify_no_error(stream_arg);
 #else
-    php_stream *stream = php_stream_from_zval_no_verify(stream_arg);
+    /* Before 8.5 the same fetch is a two-argument macro that assigns. */
+    php_stream *stream = nullptr;
+    php_stream_from_zval_no_verify(stream, stream_arg);
 #endif
     if (stream == nullptr) {
         zend_throw_exception(zend_ce_value_error,
