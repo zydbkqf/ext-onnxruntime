@@ -52,6 +52,31 @@ jobs:
         if: runner.os == 'Linux'
         run: bash tests/run-sanitizers.sh
 
+  windows:
+    name: windows-2025 (PHP 8.6)
+    runs-on: windows-2025
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch ONNX Runtime SDK from NuGet
+        uses: ./.github/actions/fetch-onnxruntime
+        with:
+          package: microsoft.ml.onnxruntime
+          version: "1.32.0"
+          sha256: a9150bc2992cbbb6722070da9910e1ffa989a8bfc67bdd5bb8e745ca755641db
+          rid: win-x64
+          destination: ${{ github.workspace }}/ort/sdk
+
+      - name: Build the extension
+        uses: php/php-windows-builder/extension@v1
+        with:
+          php-version: "8.6"
+          arch: x64
+          ts: nts
+          args: --with-onnxruntime=${{ github.workspace }}\ort\sdk
+          run-tests: false
+
   freebsd:
     name: freebsd-14.5 (pkg php85)
     runs-on: ubuntu-latest
