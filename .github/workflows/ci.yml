@@ -53,8 +53,13 @@ jobs:
         run: bash tests/run-sanitizers.sh
 
   windows:
-    name: windows-2025 (PHP 8.6)
+    name: windows-2025 (PHP 8.5, advisory)
     runs-on: windows-2025
+    # Advisory only: it mirrors the release-windows build so packaging breaks
+    # show up before a release, but the runner's VS toolset provisioning for
+    # the vs18 PHP SDKs is intermittent, so a red Windows job is not treated
+    # as a release blocker -- release-windows.yml stays the authoritative gate.
+    continue-on-error: true
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
@@ -71,10 +76,10 @@ jobs:
       - name: Build the extension
         uses: php/php-windows-builder/extension@v1
         with:
-          php-version: "8.6"
+          php-version: "8.5"
           arch: x64
           ts: nts
-          args: --with-onnxruntime=${{ github.workspace }}\ort\sdk
+          args: --with-onnxruntime=${{ github.workspace }}/ort/sdk
           run-tests: false
 
   freebsd:
