@@ -20,6 +20,7 @@ extern "C" {
 #include "zend_interfaces.h"
 #include "ext/spl/spl_exceptions.h"
 #include "ext/standard/info.h"
+#include "php_streams.h"
 }
 
 #include "php_onnxruntime.h"
@@ -183,6 +184,11 @@ static zend_object_handlers onnx_runtime_handlers;
 
 static void php_ort_throw_native(std::exception_ptr exception,
                                  const char *oom_context);
+
+/* Parses a zero-based list of non-negative integers into `shape`.  `label`
+ * names the subject in error messages ("tensor", "device tensor", ...). */
+static void php_ort_parse_shape(zval *shape_zval, std::vector<int64_t> &shape,
+                                const char *label);
 
 /* ----------------------------------------------------------------------------
  * Object lifecycle
@@ -1054,6 +1060,27 @@ ZEND_BEGIN_ARG_WITH_RETURN_OBJ_INFO_EX(arginfo_onnx_tensor_from_array, 0, 1,
     ZEND_ARG_TYPE_INFO(0, dtype, IS_STRING, 1)
 ZEND_END_ARG_INFO()
 
+ZEND_BEGIN_ARG_WITH_RETURN_OBJ_INFO_EX(arginfo_onnx_tensor_from_buffer, 0, 2,
+                                       OnnxRuntime\\Tensor, 0)
+    ZEND_ARG_TYPE_INFO(0, buffer, IS_STRING, 0)
+    ZEND_ARG_TYPE_INFO(0, shape, IS_ARRAY, 0)
+    ZEND_ARG_TYPE_INFO(0, dtype, IS_STRING, 1)
+    ZEND_ARG_TYPE_INFO(0, options, IS_ARRAY, 1)
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_WITH_RETURN_OBJ_INFO_EX(arginfo_onnx_tensor_from_stream, 0, 2,
+                                       OnnxRuntime\\Tensor, 0)
+    ZEND_ARG_INFO(0, stream)
+    ZEND_ARG_TYPE_INFO(0, shape, IS_ARRAY, 0)
+    ZEND_ARG_TYPE_INFO(0, dtype, IS_STRING, 1)
+    ZEND_ARG_TYPE_INFO(0, options, IS_ARRAY, 1)
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_onnx_tensor_to_buffer, 0, 0,
+                                        IS_STRING, 0)
+    ZEND_ARG_TYPE_INFO(0, options, IS_ARRAY, 1)
+ZEND_END_ARG_INFO()
+
 ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_onnx_tensor_dtype, 0, 0,
                                         IS_STRING, 0)
 ZEND_END_ARG_INFO()
@@ -1368,7 +1395,8 @@ PHP_METHOD(OnnxRuntime_Tensor, __construct) {
     zend_throw_exception(
         zend_ce_error,
         "OnnxRuntime\\Tensor cannot be constructed directly; use "
-        "OnnxRuntime\\Tensor::fromArray()",
+        "OnnxRuntime\\Tensor::fromArray() or "
+        "OnnxRuntime\\Tensor::fromBuffer()",
         0);
     RETURN_THROWS();
 }
@@ -1414,6 +1442,448 @@ PHP_METHOD(OnnxRuntime_Tensor, fromArray) {
         RETURN_THROWS();
     }
     RETURN_OBJ(object);
+}
+
+/* Reads a number zval into `out`; returns false when the zval is not numeric. */
+static bool php_ort_read_number(zval *value, double *out) {
+    if (Z_TYPE_P(value) == IS_LONG) {
+        *out = static_cast<double>(Z_LVAL_P(value));
+        return true;
+    }
+    if (Z_TYPE_P(value) == IS_DOUBLE) {
+        *out = Z_DVAL_P(value);
+        return true;
+    }
+    return false;
+}
+
+/* Accepts a number or a flat list of numbers; appends to `out`. */
+static bool php_ort_read_number_list(zval *value, std::vector<double> &out) {
+    double number = 0.0;
+    if (php_ort_read_number(value, &number)) {
+        out.push_back(number);
+        return true;
+    }
+    if (Z_TYPE_P(value) != IS_ARRAY) {
+        return false;
+    }
+    zval *item = nullptr;
+    ZEND_HASH_FOREACH_VAL(Z_ARRVAL_P(value), item) {
+        if (!php_ort_read_number(item, &number)) {
+            return false;
+        }
+        out.push_back(number);
+    } ZEND_HASH_FOREACH_END();
+    return true;
+}
+
+/* Parses the option array shared by fromBuffer() and fromStream().  `offset`
+ * is only honoured when the caller passes a pointer (fromStream); `fn` names
+ * the PHP method in error messages.  Returns false with a pending PHP
+ * exception on failure. */
+/* Which keys a given method accepts.  fromBuffer()/fromStream() take the full
+ * plumbing set, toBuffer() only layout and cast: it deliberately has no
+ * de-normalisation (see tensorToBuffer()). */
+enum php_ort_buffer_option : unsigned {
+    kBufferOptLayout = 1u << 0,
+    kBufferOptCast = 1u << 1,
+    kBufferOptNormalise = 1u << 2,  // scale, mean, std
+    kBufferOptStream = 1u << 3,     // offset, length
+};
+
+static std::string php_ort_buffer_option_names(unsigned allowed) {
+    std::string names;
+    const auto add = [&names](const char *name) {
+        if (!names.empty()) {
+            names += ", ";
+        }
+        names += name;
+    };
+    if (allowed & kBufferOptLayout) {
+        add("layout");
+    }
+    if (allowed & kBufferOptCast) {
+        add("cast");
+    }
+    if (allowed & kBufferOptNormalise) {
+        add("scale");
+        add("mean");
+        add("std");
+    }
+    if (allowed & kBufferOptStream) {
+        add("offset");
+        add("length");
+    }
+    return names;
+}
+
+static bool php_ort_parse_buffer_options(zval *options_arg,
+                                         php_ort::BufferOptions &options,
+                                         size_t *offset, size_t *length,
+                                         unsigned allowed, const char *fn) {
+    if (options_arg == nullptr || Z_TYPE_P(options_arg) != IS_ARRAY) {
+        return true;
+    }
+    zend_string *key = nullptr;
+    zval *value = nullptr;
+    ZEND_HASH_FOREACH_STR_KEY_VAL(Z_ARRVAL_P(options_arg), key, value) {
+        if (key == nullptr) {
+            zend_throw_exception_ex(zend_ce_value_error, 0,
+                                    "%s() options must be an associative "
+                                    "array, a list was given", fn);
+            return false;
+        }
+
+        if ((allowed & kBufferOptLayout) &&
+            zend_string_equals_literal_ci(key, "layout")) {
+            if (Z_TYPE_P(value) != IS_STRING) {
+                zend_throw_exception_ex(zend_ce_value_error, 0,
+                                        "%s() option \"layout\" must be a "
+                                        "string", fn);
+                return false;
+            }
+            zend_string *layout = zend_string_tolower(Z_STR_P(value));
+            bool recognised = true;
+            if (zend_string_equals_literal(layout, "hwc")) {
+                options.hwc = true;
+            } else if (zend_string_equals_literal(layout, "chw") ||
+                       zend_string_equals_literal(layout, "none")) {
+                options.hwc = false;
+            } else {
+                recognised = false;
+            }
+            if (!recognised) {
+                zend_throw_exception_ex(
+                    zend_ce_value_error, 0,
+                    "%s() option \"layout\" must be \"hwc\", \"chw\" or "
+                    "\"none\", got \"%s\"", fn, ZSTR_VAL(Z_STR_P(value)));
+                zend_string_release(layout);
+                return false;
+            }
+            zend_string_release(layout);
+        } else if ((allowed & kBufferOptCast) &&
+                   zend_string_equals_literal_ci(key, "cast")) {
+            if (Z_TYPE_P(value) != IS_STRING) {
+                zend_throw_exception_ex(zend_ce_value_error, 0,
+                                        "%s() option \"cast\" must be a dtype "
+                                        "string", fn);
+                return false;
+            }
+            zend_string *target = zend_string_tolower(Z_STR_P(value));
+            ONNXTensorElementDataType type =
+                ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+            bool known = php_ort::elementTypeFromName(
+                std::string(ZSTR_VAL(target), ZSTR_LEN(target)), &type);
+            if (!known) {
+                zend_throw_exception_ex(
+                    zend_ce_value_error, 0,
+                    "Unsupported cast dtype \"%s\"; supported dtypes are: %s",
+                    ZSTR_VAL(Z_STR_P(value)), php_ort::supportedDtypeNames());
+                zend_string_release(target);
+                return false;
+            }
+            zend_string_release(target);
+            options.target_type = type;
+        } else if ((allowed & kBufferOptNormalise) &&
+                   zend_string_equals_literal_ci(key, "scale")) {
+            if (!php_ort_read_number(value, &options.scale)) {
+                zend_throw_exception_ex(zend_ce_value_error, 0,
+                                        "%s() option \"scale\" must be a "
+                                        "number", fn);
+                return false;
+            }
+        } else if ((allowed & kBufferOptNormalise) &&
+                   (zend_string_equals_literal_ci(key, "mean") ||
+                    zend_string_equals_literal_ci(key, "std"))) {
+            bool is_mean = zend_string_equals_literal_ci(key, "mean");
+            std::vector<double> &target = is_mean ? options.mean : options.std;
+            target.clear();
+            if (!php_ort_read_number_list(value, target)) {
+                zend_throw_exception_ex(
+                    zend_ce_value_error, 0,
+                    "%s() option \"%s\" must be a number or a list of numbers",
+                    fn, ZSTR_VAL(key));
+                return false;
+            }
+        } else if ((allowed & kBufferOptStream) && offset != nullptr &&
+                   zend_string_equals_literal_ci(key, "offset")) {
+            if (Z_TYPE_P(value) != IS_LONG || Z_LVAL_P(value) < 0) {
+                zend_throw_exception_ex(
+                    zend_ce_value_error, 0,
+                    "%s() option \"offset\" must be a non-negative integer "
+                    "number of bytes", fn);
+                return false;
+            }
+            *offset = static_cast<size_t>(Z_LVAL_P(value));
+        } else if ((allowed & kBufferOptStream) && length != nullptr &&
+                   zend_string_equals_literal_ci(key, "length")) {
+            if (Z_TYPE_P(value) != IS_LONG || Z_LVAL_P(value) < 0) {
+                zend_throw_exception_ex(
+                    zend_ce_value_error, 0,
+                    "%s() option \"length\" must be a non-negative integer "
+                    "number of bytes", fn);
+                return false;
+            }
+            *length = static_cast<size_t>(Z_LVAL_P(value));
+        } else {
+            zend_throw_exception_ex(
+                zend_ce_value_error, 0,
+                "Unknown %s() option \"%s\"; supported options are %s", fn,
+                ZSTR_VAL(key), php_ort_buffer_option_names(allowed).c_str());
+            return false;
+        }
+    } ZEND_HASH_FOREACH_END();
+    return true;
+}
+
+/* Resolves the optional `dtype` argument shared by fromBuffer()/fromStream().
+ * Returns false with a pending ValueError on an unknown name. */
+static bool php_ort_resolve_dtype_arg(zend_string *dtype_arg,
+                                      php_ort::BufferOptions &options) {
+    if (dtype_arg == nullptr) {
+        return true;
+    }
+    zend_string *lower = zend_string_tolower(dtype_arg);
+    ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+    bool known = php_ort::elementTypeFromName(
+        std::string(ZSTR_VAL(lower), ZSTR_LEN(lower)), &type);
+    zend_string_release(lower);
+    if (!known) {
+        zend_throw_exception_ex(
+            zend_ce_value_error, 0,
+            "Unsupported dtype \"%s\"; supported dtypes are: %s",
+            ZSTR_VAL(dtype_arg), php_ort::supportedDtypeNames());
+        return false;
+    }
+    options.source_type = type;
+    options.target_type = type;
+    return true;
+}
+
+/* Number of bytes `shape` * `type` needs, computed through the tensor core so
+ * overflow and negative-dimension checks stay in one place. */
+static size_t php_ort_required_buffer_bytes(const std::vector<int64_t> &shape,
+                                            ONNXTensorElementDataType type) {
+    php_ort::Tensor descriptor;
+    descriptor.shape = shape;
+    descriptor.type = type;
+    size_t count = descriptor.elementCount();
+    size_t element_size = php_ort::elementByteSize(type);
+    if (count != 0 && element_size > std::numeric_limits<size_t>::max() / count) {
+        throw php_ort::ConversionError("tensor byte size overflows size_t");
+    }
+    return count * element_size;
+}
+
+/* Reads exactly `bytes` into `out`.  Short streams are an error rather than a
+ * partially filled tensor; the caller still owns the stream position. */
+static size_t php_ort_stream_read_exact(php_stream *stream, uint8_t *out,
+                                        size_t bytes) {
+    size_t got = 0;
+    while (got < bytes) {
+        ssize_t read = php_stream_read(stream, reinterpret_cast<char *>(out + got),
+                                       bytes - got);
+        if (read <= 0) {
+            break;
+        }
+        got += static_cast<size_t>(read);
+    }
+    return got;
+}
+
+/* Skips `bytes` from the current position, preferring a seek and falling back
+ * to reads on non-seekable streams (sockets, some filters). */
+static bool php_ort_stream_skip(php_stream *stream, size_t bytes) {
+    if (bytes == 0) {
+        return true;
+    }
+    if (php_stream_seek(stream, static_cast<zend_off_t>(bytes), SEEK_CUR) == 0) {
+        return true;
+    }
+    uint8_t scratch[4096];
+    size_t left = bytes;
+    while (left > 0) {
+        size_t chunk = left < sizeof(scratch) ? left : sizeof(scratch);
+        ssize_t read = php_stream_read(stream, reinterpret_cast<char *>(scratch),
+                                       chunk);
+        if (read <= 0) {
+            return false;
+        }
+        left -= static_cast<size_t>(read);
+    }
+    return true;
+}
+
+PHP_METHOD(OnnxRuntime_Tensor, fromBuffer) {
+    zend_string *buffer = nullptr;
+    zval *shape_arg = nullptr;
+    zend_string *dtype_arg = nullptr;
+    zval *options_arg = nullptr;
+
+    ZEND_PARSE_PARAMETERS_START(2, 4)
+        Z_PARAM_STR(buffer)
+        Z_PARAM_ARRAY(shape_arg)
+        Z_PARAM_OPTIONAL
+        Z_PARAM_STR_OR_NULL(dtype_arg)
+        Z_PARAM_ARRAY_OR_NULL(options_arg)
+    ZEND_PARSE_PARAMETERS_END();
+
+    php_ort::BufferOptions options;
+
+    /* `dtype` describes the bytes as stored in the buffer and, unless `cast`
+     * overrides it, also the dtype of the resulting tensor. */
+    if (!php_ort_resolve_dtype_arg(dtype_arg, options)) {
+        RETURN_THROWS();
+    }
+
+    if (!php_ort_parse_buffer_options(
+            options_arg, options, nullptr, nullptr,
+            kBufferOptLayout | kBufferOptCast | kBufferOptNormalise,
+            "fromBuffer")) {
+        RETURN_THROWS();
+    }
+
+    std::vector<int64_t> shape;
+    php_ort::Tensor tensor;
+    try {
+        php_ort_parse_shape(shape_arg, shape, "tensor");
+        tensor = php_ort::tensorFromBuffer(
+            ZSTR_VAL(buffer), ZSTR_LEN(buffer), shape, options);
+    } catch (...) {
+        php_ort_throw_native(std::current_exception(),
+                             "out of memory while building tensor from buffer");
+        RETURN_THROWS();
+    }
+
+    zend_object *object = php_ort_return_tensor(std::move(tensor));
+    if (object == nullptr) {
+        RETURN_THROWS();
+    }
+    RETURN_OBJ(object);
+}
+
+PHP_METHOD(OnnxRuntime_Tensor, fromStream) {
+    zval *stream_arg = nullptr;
+    zval *shape_arg = nullptr;
+    zend_string *dtype_arg = nullptr;
+    zval *options_arg = nullptr;
+
+    ZEND_PARSE_PARAMETERS_START(2, 4)
+        Z_PARAM_RESOURCE(stream_arg)
+        Z_PARAM_ARRAY(shape_arg)
+        Z_PARAM_OPTIONAL
+        Z_PARAM_STR_OR_NULL(dtype_arg)
+        Z_PARAM_ARRAY_OR_NULL(options_arg)
+    ZEND_PARSE_PARAMETERS_END();
+
+    php_ort::BufferOptions options;
+    if (!php_ort_resolve_dtype_arg(dtype_arg, options)) {
+        RETURN_THROWS();
+    }
+
+    /* `offset` skips bytes before the payload; `length` is only used to assert
+     * the payload size when the caller wants to be explicit. */
+    size_t offset = 0;
+    size_t length = 0;
+    if (!php_ort_parse_buffer_options(
+            options_arg, options, &offset, &length,
+            kBufferOptLayout | kBufferOptCast | kBufferOptNormalise |
+                kBufferOptStream,
+            "fromStream")) {
+        RETURN_THROWS();
+    }
+
+    php_stream *stream = php_stream_from_zval_no_verify_no_error(stream_arg);
+    if (stream == nullptr) {
+        zend_throw_exception(zend_ce_value_error,
+                             "fromStream() could not resolve the stream "
+                             "resource", 0);
+        RETURN_THROWS();
+    }
+
+    std::vector<int64_t> shape;
+    size_t required = 0;
+    try {
+        php_ort_parse_shape(shape_arg, shape, "tensor");
+        required = php_ort_required_buffer_bytes(shape, options.source_type);
+        if (length != 0 && length != required) {
+            throw php_ort::ConversionError(
+                "length " + std::to_string(length) +
+                " does not match shape/dtype (expected " +
+                std::to_string(required) + " bytes)");
+        }
+    } catch (...) {
+        php_ort_throw_native(std::current_exception(),
+                             "out of memory while reading tensor metadata");
+        RETURN_THROWS();
+    }
+
+    php_ort::Tensor tensor;
+    try {
+        if (!php_ort_stream_skip(stream, offset)) {
+            throw php_ort::ConversionError(
+                "stream ended while skipping " + std::to_string(offset) +
+                " bytes");
+        }
+
+        std::vector<uint8_t> payload(required);
+        if (required != 0) {
+            size_t got = php_ort_stream_read_exact(stream, payload.data(),
+                                                   required);
+            if (got != required) {
+                throw php_ort::ConversionError(
+                    "stream yielded " + std::to_string(got) + " of " +
+                    std::to_string(required) +
+                    " bytes; it is empty, exhausted, or not readable");
+            }
+        }
+        tensor = php_ort::tensorFromBuffer(payload.data(), required, shape,
+                                           options);
+    } catch (...) {
+        php_ort_throw_native(std::current_exception(),
+                             "out of memory while reading a tensor from a stream");
+        RETURN_THROWS();
+    }
+
+    zend_object *object = php_ort_return_tensor(std::move(tensor));
+    if (object == nullptr) {
+        RETURN_THROWS();
+    }
+    RETURN_OBJ(object);
+}
+
+PHP_METHOD(OnnxRuntime_Tensor, toBuffer) {
+    zval *options_arg = nullptr;
+
+    ZEND_PARSE_PARAMETERS_START(0, 1)
+        Z_PARAM_OPTIONAL
+        Z_PARAM_ARRAY_OR_NULL(options_arg)
+    ZEND_PARSE_PARAMETERS_END();
+
+    php_ort_tensor_object *self =
+        php_ort_tensor_from_obj(Z_OBJ_P(ZEND_THIS));
+    php_ort::Tensor &tensor = *self->tensor;
+
+    php_ort::BufferOptions options;
+    options.target_type = tensor.type;
+    if (!php_ort_parse_buffer_options(options_arg, options, nullptr, nullptr,
+                                      kBufferOptLayout | kBufferOptCast,
+                                      "toBuffer")) {
+        RETURN_THROWS();
+    }
+
+    std::string bytes;
+    try {
+        tensor.validate();
+        bytes = php_ort::tensorToBuffer(tensor, options.target_type,
+                                        options.hwc);
+    } catch (...) {
+        php_ort_throw_native(std::current_exception(),
+                             "out of memory while serialising a tensor");
+        RETURN_THROWS();
+    }
+
+    RETURN_STR(zend_string_init(bytes.data(), bytes.size(), 0));
 }
 
 PHP_METHOD(OnnxRuntime_Tensor, dtype) {
@@ -1539,8 +2009,8 @@ PHP_METHOD(OnnxRuntime_Tensor, toOrtValue) {
     }
 }
 
-static void php_ort_parse_device_shape(zval *shape_zval,
-                                      std::vector<int64_t> &shape) {
+static void php_ort_parse_shape(zval *shape_zval, std::vector<int64_t> &shape,
+                                const char *label) {
     if (Z_TYPE_P(shape_zval) != IS_ARRAY) {
         throw php_ort::ConversionError("shape must be an array");
     }
@@ -1559,7 +2029,7 @@ static void php_ort_parse_device_shape(zval *shape_zval,
         }
         if (Z_LVAL_P(value) < 0) {
             throw php_ort::ConversionError(
-                "device tensor dimensions must be non-negative");
+                std::string(label) + " dimensions must be non-negative");
         }
         shape.push_back(static_cast<int64_t>(Z_LVAL_P(value)));
         ++expected;
@@ -1597,7 +2067,7 @@ PHP_METHOD(OnnxRuntime_Tensor, allocateOnDevice) {
         }
 
         std::vector<int64_t> shape;
-        php_ort_parse_device_shape(shape_arg, shape);
+        php_ort_parse_shape(shape_arg, shape, "device tensor");
 
         std::string memory_type = memory_type_arg != nullptr
                                       ? std::string(ZSTR_VAL(memory_type_arg),
@@ -1626,6 +2096,12 @@ static const zend_function_entry onnx_tensor_methods[] = {
            ZEND_ACC_PUBLIC | ZEND_ACC_STATIC)
     PHP_ME(OnnxRuntime_Tensor, fromArray, arginfo_onnx_tensor_from_array,
            ZEND_ACC_PUBLIC | ZEND_ACC_STATIC)
+    PHP_ME(OnnxRuntime_Tensor, fromBuffer, arginfo_onnx_tensor_from_buffer,
+           ZEND_ACC_PUBLIC | ZEND_ACC_STATIC)
+    PHP_ME(OnnxRuntime_Tensor, fromStream, arginfo_onnx_tensor_from_stream,
+           ZEND_ACC_PUBLIC | ZEND_ACC_STATIC)
+    PHP_ME(OnnxRuntime_Tensor, toBuffer, arginfo_onnx_tensor_to_buffer,
+           ZEND_ACC_PUBLIC)
     PHP_ME(OnnxRuntime_Tensor, dtype, arginfo_onnx_tensor_dtype,
            ZEND_ACC_PUBLIC)
     PHP_ME(OnnxRuntime_Tensor, shape, arginfo_onnx_tensor_shape,

@@ -2,7 +2,7 @@
 
 A native PHP extension that loads ONNX models and runs inference directly from PHP, using the Zend C API, C++, and the ONNX Runtime native library. It does not use FFI or Python.
 
-Current status: synchronous inference, native async tasks, CPU I/O Binding, fixed-shape preallocated outputs, device tensors, explicit device copies, explicit multi-group batch inference, and async I/O Binding are implemented. The current feature set is verified on macOS arm64 ZTS and NTS, Windows x86_64 ZTS and NTS, Linux x86_64 ZTS, and Linux x86_64 NTS (33/36 to 35/38 PHPT, with Windows CUDA and no-CUDA/TensorRT platform skips; CoreML passes on macOS). The Windows CUDA Plugin EP smoke path has passed: register the provider DLL, enumerate the CUDA `EpDevice`, append it with `appendEpDevice()`, and run inference on the NVIDIA GPU. Windows CUDA and TensorRT inference through `appendExecutionProvider()` also runs on the GPU. This is a smoke result, not general Plugin EP acceptance across every provider, platform, unload sequence, and failure mode. The OpenVINO Plugin EP also runs on Windows and is benchmarked in `benchmarks/README.md`.
+Current status: synchronous inference, native async tasks, CPU I/O Binding, fixed-shape preallocated outputs, device tensors, explicit device copies, explicit multi-group batch inference, and async I/O Binding are implemented. The current feature set is verified on macOS arm64 (ZTS and NTS), Windows x86_64 (ZTS and NTS), Linux x86_64 (ZTS and NTS), Linux arm64 (ZTS and NTS), and FreeBSD 14.5 x86_64 (NTS) — 33/36 to 41/44 PHPT depending on the platform and revision, with Windows CUDA and no-CUDA/TensorRT platform skips; CoreML passes on macOS. The Windows CUDA Plugin EP smoke path has passed: register the provider DLL, enumerate the CUDA `EpDevice`, append it with `appendEpDevice()`, and run inference on the NVIDIA GPU. Windows CUDA and TensorRT inference through `appendExecutionProvider()` also runs on the GPU. This is a smoke result, not general Plugin EP acceptance across every provider, platform, unload sequence, and failure mode. The OpenVINO Plugin EP runs and is benchmarked on both Windows and Linux — see `benchmarks/README.md`.
 
 Execution providers have two distinct entry points:
 
@@ -19,21 +19,26 @@ When no EP is appended, ORT defaults are preserved; this project does not promis
 
 3. **Inference is compute-bound.** The OS can still preempt a process, but the PHP request does not cooperatively yield, so the current worker is unavailable for the whole run. Long CPU inference raises request latency and reduces concurrency. Use worker isolation, request limits, and capacity planning instead of assuming PHP will "yield" during the computation.
 
-4. **Most PHP server deployments have CPU only.** GPU/NPU access is provided through ONNX Runtime execution providers, and availability depends on the ORT build and platform. EP offload is opt-in and must be benchmarked before production: extra data transfers and unsupported graph partitions can make a small model slower on an EP than on CPU.
+4. **Most PHP server deployments have CPU only.** GPU/NPU access is provided through ONNX Runtime execution providers, and availability depends on the ORT build and platform. EP offload is opt-in and must be benchmarked before production: extra data transfers and unsupported graph partitions can make a small model slower on an EP than on CPU. If the host has no GPU, the only accelerator worth trying is the OpenVINO plugin EP, which runs on the Intel CPU itself — see below.
 
-5. **INT8-quantized models are often a good starting point for CPU, but not a universal rule.** Quantization can reduce accuracy and may not help every model or backend. Avoid very large models, measure latency, memory, and output quality, and test on the actual target hardware before production.
+5. **int8 is a hardware-and-backend decision, not a default.** Quantized weights only speed up inference when the CPU has int8 kernels (`avx512_vnni` / `avx_vnni` / `amx_int8` on x86, `i8mm` / `dotprod` on ARM) *and* the execution provider actually uses them; otherwise the graph dequantizes back to fp32 around every convolution and ends up slower. It also is not a drop-in download for most public models: YOLO, PaddleOCR and the rapidocr wheels ship fp32 ONNX only, so you have to quantize yourself. Measured case study on a Sapphire Rapids host: int8 cut YOLO by 32% on the built-in CPU EP, and made every graph **slower** under the OpenVINO 1.8.1 plugin (session create 1.0 s -> 5.4 s). Check `grep -Eo 'avx512_vnni|avx_vnni|amx_int8' /proc/cpuinfo` first, and benchmark fp32 vs int8 on the real machine — details in [`docs/EXAMPLE-OPENVINO-YOLO-OCR.md`](docs/EXAMPLE-OPENVINO-YOLO-OCR.md).
 
 ## Support Status
 
 | Platform | PHP | Thread mode | Status |
 | --- | --- | --- | --- |
-| macOS arm64 | 8.5.6 / 8.5.12 / 8.6.0 | ZTS / NTS / ZTS | Verified: 34/36 (8.5) and 35/38 (8.6) PHPT; 1–3 platform skips (Windows CUDA `033`, no CUDA/TensorRT `036`, OpenVINO plugin `038`); CoreML passes; ASan, native sync/async stress; PHP 8.6 removed `XtOffsetOf`, handled by a version-guarded offset helper |
+| macOS arm64 | 8.5.6, 8.5.12, 8.6.0 | ZTS (8.5.6), NTS (8.5.12), ZTS (8.6.0) | Verified: 34/36 (8.5, older revision) and 41/44 (8.6) PHPT; 1–3 platform skips (Windows CUDA `033`, no CUDA/TensorRT `036`, OpenVINO plugin `038`); CoreML passes; ASan, native sync/async stress; PHP 8.6 removed `XtOffsetOf`, handled by a version-guarded offset helper |
 | Linux x86_64 | 8.6.0 | NTS | Verified: 33/37 PHPT, 4 platform skips (CoreML, Windows CUDA, no CUDA/TensorRT provider in the CPU SDK, OpenVINO plugin `038`); PHP built from source, ORT 1.28.0 CPU runtime |
 | Linux x86_64 | 8.5.12 | NTS | Verified: 33/36 PHPT, 3 platform skips (CoreML, Windows CUDA, OpenVINO plugin `038`); CUDA built-in EP runs inference with the ORT 1.28.2 CUDA 13 GPU package; new `--with-onnxruntime=DIR` build path |
 | Linux x86_64 | 8.5.12 | ZTS | Verified: 33/36 PHPT, 3 platform skips (CoreML, Windows CUDA, OpenVINO plugin `038`); CUDA built-in EP runs inference with the ORT 1.28.2 CUDA 13 GPU package; async ASan+LSan passed; Swoole 6.2.1 Fiber/coroutine/process/thread, `pcntl_fork`, `parallel` |
 | Linux arm64 | 8.5.12 | NTS/ZTS | Verified: 33/36 PHPT, 3 platform skips (CoreML, Windows CUDA, OpenVINO plugin `038`); ORT 1.28.2 aarch64 CPU SDK; PHPT needs the cpuinfo-warning filter described below |
 | FreeBSD 14.5 x86_64 | 8.5.12 | NTS | Verified: 34/38 PHPT, 4 platform skips (CoreML, Windows CUDA, no CUDA/TensorRT provider, OpenVINO plugin `038`); ORT 1.30.0 pkg; CI uses a FreeBSD VM and the pkg-provided PHP; PHPT needs the stderr filter in `docs/FREEBSD.md` |
 | Windows x86_64 | 8.5.12 | NTS/ZTS | Verified: 35/37 PHPT, 2 platform skips (CoreML, OpenVINO plugin `038`); `034`/`035` CPU+CUDA async binding; native I/O Binding stress; CUDA Plugin EP smoke; CUDA and TensorRT inference via `appendExecutionProvider()` on the NVIDIA GPU |
+
+Counts in the table were recorded when the suite had 36-38 tests. `039`–`044`
+added the byte-buffer API coverage and run on every platform, so the current
+totals are 6 higher per row (44 tests overall; macOS 8.6 is re-measured at
+41/44). Rows are re-run per release, not per commit.
 
 The PHP code targets the Zend API in PHP 8.0–8.6 and rejects versions below 8.0 at compile time. Verified environments: macOS arm64 PHP 8.5.6 ZTS, PHP 8.5.12 NTS (Homebrew) and PHP 8.6.0 ZTS; Linux x86_64 PHP 8.5.12 NTS and ZTS (current feature set, Swoole 6.2.1 on ZTS), and the same two builds against the ORT 1.28.2 CUDA 13 GPU package, where the built-in CUDA EP runs inference; Linux arm64 PHP 8.5.12 NTS and ZTS (ORT 1.28.2 aarch64 CPU SDK, source-built PHP); Windows x86_64 PHP 8.5.12 ZTS and NTS with VS 2026 + MSVC 14.44 and ORT 1.28.2, including CUDA and TensorRT inference on an RTX 3050; FreeBSD 14.5 x86_64 PHP 8.5.12 NTS with the `onnxruntime` 1.30.0 package (CPU only; see `docs/FREEBSD.md`). On Linux arm64 and FreeBSD the ORT prebuilt library prints a `cpuid_info` warning on stderr, so PHPT must be run through a wrapper that filters that line — see `docs/LINUX-ARM64-BASELINE.md` and `docs/FREEBSD.md`; without it every test fails on output mismatch, not on behaviour. Debug builds and other unlisted combinations are not claimed as supported. `phpize`/`php-config` determine the ZTS/NTS and Debug/Release configuration; the resulting module must be installed into the extension_dir of the same PHP build and loaded by that same `php` binary.
 
@@ -44,13 +49,76 @@ The PHP code targets the Zend API in PHP 8.0–8.6 and rejects versions below 8.
 - A C++17 compiler (Apple clang on macOS; g++/clang++ on Linux; base clang on FreeBSD)
 - ONNX Runtime **1.18.0 or newer** for the core build (`ORT_API_VERSION >= 18`);
   1.32.0 is the current default. The core surface is verified against 1.18, 1.20,
-  1.21, 1.23, 1.26 and 1.32. 1.17 and older are rejected by `config.m4` and
+  1.21, 1.23, 1.26, 1.28.2 (explicit macOS SDK) and 1.32. 1.17 and older are rejected by `config.m4` and
   `config.w32`; an exploratory 1.17.3 build compiled, but its bundled PHPT
   fixtures are ONNX IR 10, above ORT 1.17's IR 9 limit, so it is not supported.
 - The `EpDevice`/`DeviceTensor`/Plugin-EP API requires **1.23.0 or newer**.
   Builds against 1.18–1.22 keep the same PHP class surface, but device-related
   methods throw `requires ONNX Runtime 1.23 or newer`. There is no separate
   "core" flavor: the same module adapts to whatever SDK version is supplied.
+
+## Execution Providers
+
+### Choosing an execution provider
+
+Read this before the install sections. Most PHP deployments are CPU-only, so the
+realistic order of usefulness is **CPU → OpenVINO → (macOS) CoreML → CUDA**; CUDA
+sits last on purpose because it needs an NVIDIA GPU, a matching driver and a
+CUDA-era ONNX Runtime package, which a typical server does not have.
+
+| Provider | Mechanism | Hardware | Doc |
+| --- | --- | --- | --- |
+| `CPUExecutionProvider` | Built-in, always present | any x86_64 / arm64 CPU | `docs/EP-CPU.md` |
+| OpenVINO | Plugin EP, loaded at runtime | Intel CPU; optionally iGPU/NPU. **No NVIDIA GPU needed** | `docs/EP-OPENVINO.md` |
+| `CoreMLExecutionProvider` | Built-in in the macOS dylib | Apple silicon | `docs/EP-COREML.md` |
+| CUDA / TensorRT | Built-in appenders or CUDA Plugin EP | NVIDIA GPU, driver, CUDA runtime, cuDNN | `docs/EP-CUDA.md` |
+
+For a GPU-less server the practical order is: start with the default CPU
+build and measure fp32; add the OpenVINO plugin EP next, since it is the one
+accelerator that works without a GPU and on recent Intel CPUs it wins by a wide
+margin even on fp32 (measured end to end 199 ms vs 331 ms per image on a
+Sapphire Rapids box); quantize to int8 last, and only if the CPU exposes
+VNNI/AMX (or ARM i8mm) and your chosen EP actually benefits from it. Both
+measurements, including the case where int8 loses under OpenVINO, are in
+[`docs/EXAMPLE-OPENVINO-YOLO-OCR.md`](docs/EXAMPLE-OPENVINO-YOLO-OCR.md).
+
+Each provider has its own guide in `docs/` (see the `Doc` column); this README
+keeps only what is needed to build, load and choose.
+
+### OpenVINO Plugin EP (CPU acceleration, Windows/Linux)
+
+It runs on the Intel CPU you already have. It is a standalone plugin EP loaded
+at runtime, so the extension is built against the ordinary CPU package and no
+configure flag is involved. Install `Intel.ML.OnnxRuntime.EP.OpenVINO`, keep the plugin and its
+OpenVINO/TBB libraries in one directory, register it on `Runtime`, then select
+its `EpDevice`:
+
+```php
+$runtime = OnnxRuntime\Runtime::default();
+$runtime->registerExecutionProviderLibrary(
+    'openvino',
+    '/opt/openvino-ep/libonnxruntime_providers_openvino_plugin.so'
+);
+
+$options = new OnnxRuntime\SessionOptions();
+foreach ($runtime->getEpDevices() as $device) {
+    if ($device->epName() === 'OpenVINOExecutionProvider') {
+        $options->appendEpDevice($device);
+        break;
+    }
+}
+$session = new OnnxRuntime\Session('model.onnx', $options);
+```
+
+What has to sit next to the plugin, the Windows/Linux search paths, the CPU and
+`OpenVINOExecutionProvider.AUTO` devices, thread control (`load_config`, not
+`setIntraOpNumThreads`), and the 71.9 vs 245.2 ms figure together with its
+CPU-budget caveat are all in `docs/EP-OPENVINO.md`, and a full image pipeline
+(GD -> YOLO11 -> PP-OCRv4, with per-stage timings) is in
+`docs/EXAMPLE-OPENVINO-YOLO-OCR.md`. The measured CPU-usage table is in
+`benchmarks/README.md`. `DNNLExecutionProvider` is not part of
+Microsoft's prebuilt packages; oneDNN sits underneath OpenVINO's CPU plugin
+instead.
 
 ### Getting ONNX Runtime
 
@@ -66,7 +134,9 @@ The PHP code targets the Zend API in PHP 8.0–8.6 and rejects versions below 8.
 > `buildTransitive/native/include`) and the runtime/import libraries
 > (`runtimes/<rid>/native`).
 
-`./configure` downloads the SDK from NuGet by default:
+`./configure` downloads the SDK from NuGet by default. That package is the CPU
+one, which is what most hosts want; the CUDA rows below exist only for machines
+with an NVIDIA GPU (and are the least portable part of this build):
 
 ```bash
 phpize
@@ -98,9 +168,9 @@ Package selection:
 | Configure option | NuGet package | Default version |
 | --- | --- | --- |
 | *(none)* | `Microsoft.ML.OnnxRuntime` | `1.32.0` |
-| `--with-cuda12` | `Microsoft.ML.OnnxRuntime.Gpu.Linux` | `1.26.0` |
-| `--with-cuda13` | `Microsoft.ML.OnnxRuntime.Gpu.Linux` | `1.32.0` |
 | `--with-coreml` | `Microsoft.ML.OnnxRuntime` (macOS arm64) | `1.32.0` |
+| `--with-cuda13` | `Microsoft.ML.OnnxRuntime.Gpu.Linux` | `1.32.0` |
+| `--with-cuda12` | `Microsoft.ML.OnnxRuntime.Gpu.Linux` | `1.26.0` |
 
 Footnotes:
 
@@ -137,42 +207,6 @@ instructional error. Install `pkg install php85 onnxruntime` and use either
 `./configure --with-onnxruntime` or
 `./configure --with-onnxruntime=/usr/local`; details are in
 `docs/FREEBSD.md`.
-
-### OpenVINO Plugin EP (Windows/Linux)
-
-OpenVINO is not built into the CPU NuGet runtime; it is a standalone plugin EP.
-Install `Intel.ML.OnnxRuntime.EP.OpenVINO` (1.8.1 was tested against ORT 1.32),
-keep the plugin and its OpenVINO/TBB DLLs together, then register the plugin on
-`Runtime` and select its `EpDevice`:
-
-```php
-$runtime = OnnxRuntime\Runtime::default();
-$runtime->registerExecutionProviderLibrary(
-    'openvino',
-    'D:\php\openvino-ep\onnxruntime_providers_openvino_plugin.dll'
-);
-
-$options = new OnnxRuntime\SessionOptions();
-foreach ($runtime->getEpDevices() as $device) {
-    if ($device->epName() === 'OpenVINOExecutionProvider') {
-        $options->appendEpDevice($device);
-        break;
-    }
-}
-$session = new OnnxRuntime\Session('model.onnx', $options);
-```
-
-On Windows the plugin and the `openvino.dll` / `tbb*.dll` files must be in the
-same directory or on `PATH`; on Linux add that directory to
-`LD_LIBRARY_PATH`. The plugin exposes a CPU device and an
-`OpenVINOExecutionProvider.AUTO` device. On an i5-12400F with BGE-small int8,
-batch 8 × 64, OpenVINO's p50 was 71.9 ms versus 245.2 ms on CPU (3.41×); see
-`benchmarks/README.md`.
-
-`DNNLExecutionProvider` is not part of Microsoft's prebuilt NuGet packages:
-`appendExecutionProvider('DNNL')` is rejected as an unknown provider. oneDNN is
-used underneath OpenVINO's CPU plugin; an explicit DNNL EP requires building
-ONNX Runtime from source with `--use_dnnl`.
 
 ### NuGet download integrity
 
@@ -238,7 +272,8 @@ the core code paths and expose `Runtime::supports('ep_device'|'device_tensor'|
 
 ## Build
 
-Standard build (NuGet CPU SDK):
+Standard build (NuGet CPU SDK). For a GPU-less server this is the entire build
+step; everything below it is optional:
 
 ```bash
 phpize
@@ -290,43 +325,21 @@ DLLs (`onnxruntime_providers_cuda.dll`, `onnxruntime_providers_shared.dll`,
 etc.) are runtime dependencies and must be deployed next to the ORT DLL; they
 are not linked into the PHP extension.
 
-Windows GPU prerequisites:
+Windows GPU prerequisites: the ORT runtime and the provider DLLs
+(`onnxruntime_providers_cuda.dll`, `onnxruntime_providers_tensorrt.dll`, …) are
+runtime dependencies, not linked in, and must be deployed **next to `php.exe`**
+rather than only on `PATH` — Windows 10/11 ships its own ORT 1.17
+`onnxruntime.dll` in `C:\Windows\System32`, which is searched first, and loading
+that copy fails with `The requested API version [28] is not available ... Current
+ORT Version is: 1.17.1`. The exact CUDA/cuDNN DLL names, the TensorRT `PATH`
+requirements and the TensorRT-before-CUDA append order are in `docs/EP-CUDA.md`.
 
-- `onnxruntime.dll`, `onnxruntime_providers_shared.dll`,
-  `onnxruntime_providers_cuda.dll` and `onnxruntime_providers_tensorrt.dll`
-  next to `php.exe`.
-- **Keep them next to `php.exe`, not only on `PATH`.** Windows 10/11 ships its
-  own `onnxruntime.dll` (ORT 1.17) in `C:\Windows\System32`, and `System32`
-  comes before `PATH` in the DLL search order. When the runtime sits only on
-  `PATH`, the extension picks up the system copy and fails with
-  `The requested API version [28] is not available ... Current ORT Version is: 1.17.1`.
-  Placing the 1.28.2 runtime in the `php.exe` directory wins because the
-  application directory is searched first.
-- CUDA 13: `cudart64_13.dll`, `cublas64_13.dll`, `cublasLt64_13.dll` (CUDA
-  toolkit `bin\x64`) and `cudnn64_9.dll` (cuDNN 9) on `PATH`. The CUDA
-  provider refuses to load with `Error loading ... which depends on
-  "cublasLt64_13.dll" which is missing`; the TensorRT provider additionally
-  needs cuDNN.
-- TensorRT 10.16 (`TensorRT-10.16.1.11`): its `bin` directory
-  (`nvinfer_10.dll`, `nvonnxparser_10.dll`, plugin and builder-resource DLLs)
-  on `PATH`, and the TensorRT **CUDA EP added after it** — the TensorRT EP
-  falls back to CUDA, so append TensorRT first and CUDA second.
-
-Windows verification against PHP 8.5.12 ZTS / NTS / ORT 1.28.2:
-35/36 PHPT pass, 1 CoreML platform skip; `034`/`035` exercise both the CPU
-path and, when a CUDA `EpDevice` is available, a CUDA async-binding branch
-(`cuda=pass`, `cuda4=pass`); the Plugin EP path
-(`registerExecutionProviderLibrary()` -> `getEpDevices()` ->
-`appendEpDevice()`) registers the CUDA provider DLL and runs inference on an
-NVIDIA GPU device. ORT's generic name-based appender deliberately rejects
-CUDA and TensorRT, so `appendExecutionProvider('CUDA')` and
-`appendExecutionProvider('TensorRT')` are routed to
-`SessionOptionsAppendExecutionProvider_CUDA_V2` / `_TensorRT_V2` with the
-options map applied through the matching `Update...ProviderOptionsWithValue`;
-`036` guards that routing. On an RTX 3050 with
-MatMul 512x2048x2048, ZTS ran 12.51 ms/run on CPU, 3.20 ms/run on CUDA and
-2.95 ms/run on TensorRT (fp16, 4.3 s engine build, cached); NTS ran 11.25 /
-3.24 / 2.96 ms/run. These are smoke numbers, not tuned baselines.
+Windows verification: 35/36 PHPT passed with the single CoreML platform skip in
+the run recorded here; `038` (OpenVINO plugin) landed afterwards, and the
+Support Status table records the current figure, 35/37 with two skips. `034`/`035`
+exercise the CPU path plus a CUDA async-binding branch when a CUDA `EpDevice`
+exists. The CUDA/TensorRT smoke numbers and the appender routing behind
+`appendExecutionProvider('CUDA')` / `('TensorRT')` are in `docs/EP-CUDA.md`.
 
 Notes on the Windows build: the extension must be linked with the same MSVC
 toolset as the PHP core (`14.44.35207` here). Building with the newer
@@ -339,16 +352,14 @@ fails with `ERROR: mc is required`. NTS builds need the **NTS** devel pack
 reused.
 
 Linux verification against PHP 8.5.12 NTS and ZTS / ORT 1.28.2
-`linux-x64-gpu_cuda13`: 33/35 PHPT pass with the same two platform skips.
-CUDA is a **built-in** EP there — `getAvailableProviders()` lists
-TensorRT/CUDA/CPU while `getEpDevices()` exposes only the CPU device, so
-`appendEpDevice()` cannot reach CUDA and
-`appendExecutionProvider('CUDA', ['device_id' => '0'])` is the entry point.
-On WSL2 with an RTX 3050, a MatMul 512x2048x2048 ran 12.14 ms/run on CPU
-(354 GFLOPS) versus 2.75 ms/run on CUDA (1564 GFLOPS) for ZTS, and
-12.34 vs 2.99 ms for NTS. WSL2 has no `/sys/class/drm`, so the GPU package
-logs a `device_discovery.cc` warning on startup; PHPT must be run through a
-wrapper that filters it, otherwise every test fails on output mismatch.
+`linux-x64-gpu_cuda13`: 33/35 PHPT pass with two platform skips (CoreML, and
+`033` which needs CUDA) — `038` is not part of that run. That
+package exposes CUDA through the built-in appender, not through `EpDevice`, so
+the selection call differs — see `docs/EP-CUDA.md`. On WSL2 with an RTX 3050 a
+MatMul 512x2048x2048 ran 12.14 ms/run on CPU versus 2.75 ms/run on CUDA (ZTS),
+12.34 versus 2.99 ms (NTS). The GPU package logs a `device_discovery.cc` warning
+there because WSL2 has no `/sys/class/drm`; PHPT must run through a wrapper that
+filters it, otherwise every test fails on output mismatch, not on behaviour.
 
 The build now consumes ORT from NuGet by default and compiles against whichever
 version is supplied. Verified builds: **1.18.0**, **1.20.0**, **1.21.0** and
@@ -389,7 +400,7 @@ Or load it for a single command:
 php -d extension=onnxruntime.so --ri onnxruntime
 ```
 
-`php --ri onnxruntime` should report extension version `0.4.13`. Use `php -n -d extension=...` to exclude unrelated ini settings while debugging.
+`php --ri onnxruntime` should report extension version `0.4.14`. Use `php -n -d extension=...` to exclude unrelated ini settings while debugging.
 
 ### PECL
 
@@ -403,31 +414,35 @@ pecl install onnxruntime
 
 `composer.json` declares the package as `type: php-ext` with extension name
 `onnxruntime`, ZTS/NTS support, and the optional `--with-onnxruntime` configure
-option. After the repository is submitted to Packagist, PIE can install it
+option. As of 2026-11-27 the package is published on Packagist as
+`zydbkqf/ext-onnxruntime` with tag `0.4.14` recognized, so PIE can install it
 directly:
 
 ```bash
 pie install zydbkqf/ext-onnxruntime              # NuGet CPU package
-pie install zydbkqf/ext-onnxruntime --with-cuda13
+pie install zydbkqf/ext-onnxruntime --with-cuda12  # Linux CUDA 12 package
+pie install zydbkqf/ext-onnxruntime --with-cuda13  # Linux CUDA 13 package
 pie install zydbkqf/ext-onnxruntime --with-onnxruntime=/opt/ort
 ```
 
 The ORT SDK is not bundled. By default PIE downloads the NuGet CPU package;
-pass `--with-onnxruntime=DIR` to use an existing SDK. Windows PIE does not
-compile extensions on the fly:
-it requires pre-built ZIP assets on the GitHub release for the tag. The
+pass `--with-onnxruntime=DIR` to use an existing SDK. The `--with-cuda12` /
+`--with-cuda13` options only apply to Linux builds; PIE on Windows consumes the
+pre-built ZIP assets instead, because it does not compile extensions on the fly.
+Windows PIE requires pre-built ZIP assets on the GitHub release for the tag. The
 `release-windows` workflow builds one ZIP per PHP version and ZTS/NTS mode,
 adds `onnxruntime.dll` to each ZIP, and uploads them to the release. The asset
 name follows the PIE Windows convention, for example
-`php_onnxruntime-0.4.9-8.5-nts-vs17-x86_64.zip`.
+`php_onnxruntime-0.4.14-8.5-nts-vs17-x86_64.zip`; the toolset suffix tracks the
+PHP version (`vs16` for 8.0–8.3, `vs17` for 8.4–8.5, `vs18` for 8.6).
 
 The default PIE asset is the CPU build. CUDA 12 and CUDA 13 builds are
 published as additional assets with a variant suffix, because PIE has no
 variant field in its Windows asset name:
 
 ```text
-php_onnxruntime-0.4.9-8.5-nts-vs17-x86_64-cuda12.zip
-php_onnxruntime-0.4.9-8.5-nts-vs17-x86_64-cuda13.zip
+php_onnxruntime-0.4.14-8.5-nts-vs17-x86_64-cuda12.zip
+php_onnxruntime-0.4.14-8.5-nts-vs17-x86_64-cuda13.zip
 ```
 
 `pie install` always selects the CPU asset. If you need CUDA, download the
@@ -438,9 +453,11 @@ other DLLs in the ZIP) into your PHP `extension_dir`. The CUDA build still
 requires a matching NVIDIA driver plus the CUDA Toolkit and cuDNN runtime;
 those are not bundled in the PIE ZIP.
 
-Packagist reports `dev-main` until a version tag exists. Tag `0.4.9` (without a
-`v` prefix), create the GitHub Release for that tag, and let the workflow
-publish the Windows assets before advertising Windows PIE support.
+The `0.4.14` tag is published: Packagist resolves it to that version, and the
+GitHub release for the tag carries one CPU ZIP plus `-cuda12` / `-cuda13`
+variants for PHP 8.0 through 8.6 in both NTS and ZTS modes (42 assets). PIE
+therefore installs the CPU build by default without any extra step; CUDA
+variants are a manual download because PIE always selects the CPU asset.
 
 ### macOS signing
 
@@ -489,15 +506,95 @@ var_dump($runtime->getEpDevices());
 | Method | Description |
 | --- | --- |
 | `OnnxRuntime\Tensor::fromArray(mixed $value, ?string $dtype = null): Tensor` | Convert a PHP scalar or nested array to a Tensor; an explicit `$dtype` overrides inference |
+| `OnnxRuntime\Tensor::fromBuffer(string $buffer, array $shape, ?string $dtype = null, array $options = []): Tensor` | Build a Tensor from raw bytes (row-major, native endian) with optional layout reorder, dtype cast and per-channel normalisation; see below |
+| `OnnxRuntime\Tensor::fromStream(resource $stream, array $shape, ?string $dtype = null, array $options = []): Tensor` | Same as `fromBuffer`, but the bytes are read from a PHP stream (`fopen`, `php://memory`, `php://temp`, remote or filter streams); adds `offset` / `length` options |
+| `toBuffer(array $options = []): string` | Serialise a numeric tensor back to raw bytes; `cast` and `layout` options, no numeric de-normalisation |
 | `dtype(): string` | ONNX type name: `float32` / `float64` / `int64` / `int32` / `int16` / `int8` / `uint8` / `bool` / `string` |
 | `shape(): array` | Inferred shape (`int[]`) |
 | `rank(): int` | Number of dimensions; a PHP scalar has rank 0 |
 | `toArray(): mixed` | Rebuild a PHP array from the shape (rank 0 returns a scalar) |
 | `toOrtValue(): OnnxRuntime\OrtValue` | Create an ORT tensor handle; the numeric path borrows the source Tensor buffer, while strings are copied by ORT |
 
-The public Tensor API is `fromArray` / `dtype` / `shape` / `rank` / `toArray` / `toOrtValue`, plus `OrtValue::toTensor`. `dataTypeCode()`, `dataSize()`, `elementCount()`, and `ownership()` were removed after an earlier API review: the first two are internal debugging aids, and the last two expose implementation details or no longer have meaningful semantics.
+The public Tensor API is `fromArray` / `fromBuffer` / `fromStream` / `toBuffer` / `dtype` / `shape` / `rank` / `toArray` / `toOrtValue`, plus the static `allocateOnDevice()` (returns an `OnnxRuntime\DeviceTensor`, EP-device API) and `OrtValue::toTensor`. `dataTypeCode()`, `dataSize()`, `elementCount()`, and `ownership()` were removed after an earlier API review: the first two are internal debugging aids, and the last two expose implementation details or no longer have meaningful semantics.
 
 `dtype` names are case-insensitive and accept the aliases `float` -> `float32` and `double` -> `float64`.
+
+### Tensor::fromBuffer
+
+`fromArray` costs one PHP array element per tensor element. For a 960x544 RGB input that is 1.57M elements (uint8 bytes in, float32 tensor
+out): the nested array build plus per-element conversion takes 139 ms on an M-series Mac (301 ms on a 4-core x86 server), while `fromBuffer` does the same work in 5 ms because the payload never leaves native memory.
+
+```php
+$pixels = /* raw RGB bytes from GD, Imagick, ffmpeg or a camera */;
+$t = OnnxRuntime\Tensor::fromBuffer($pixels, [1, 3, 544, 960], 'uint8', [
+    'layout' => 'hwc',      // buffer is HWC, $shape is the NCHW target
+    'cast'   => 'float32',  // optional
+    'scale'  => 1 / 255,    // optional: v = (v * scale - mean) / std
+    'mean'   => 0.5,
+    'std'    => 0.5,
+]);
+```
+
+| Option | Values | Meaning |
+| --- | --- | --- |
+| `layout` | `hwc` / `chw` / `none` (default) | `hwc` reorders `[N,]H,W,C` bytes into the `[N,]C,H,W` shape you passed; `chw` and `none` mean "no re-order — the bytes already follow `$shape`". Rank 3 and rank 4 only |
+| `cast` | any numeric or `bool` dtype | Element dtype of the result; omitted means "same as the buffer dtype" |
+| `scale` | number | Multiplier applied before `mean` / `std` |
+| `mean`, `std` | number or flat list of numbers | Per-channel (broadcast when one value), matched against the channel axis of the **target** shape: dim 0 for rank 3 (`[C,H,W]`), dim 1 for rank >= 4 (`[N,C,...]`: `[N,C,H,W]`, `[N,C,D,H,W]`, stride = product of the axes after C), the last axis for rank 2, a single channel for rank 0/1 |
+
+Rules worth knowing:
+
+- `$dtype` is the element type **as stored in the buffer** and stays the tensor dtype unless `cast` overrides it. Default `float32`.
+- `strlen($buffer)` must equal `array_product($shape) * dtype_size`, otherwise `ConversionException`. Bounds checks happen before any copy.
+- `scale` / `mean` / `std` require a `float32` or `float64` target; asking for them with an integer target is an error rather than a silent truncation.
+- Integer -> integer casts saturate to the target range (`int32` 999 -> `uint8` 255); float -> integer additionally truncates toward zero (1.5 -> 1). `bool` is non-zero -> `true`.
+- A same-dtype pass with no `scale`/`mean`/`std` is a **byte copy**, even when `layout` re-orders: values are never widened, so `int64` above 2^53, `INT64_MIN` and `INT64_MAX` survive exactly. A dtype change — or a normalising pass with `scale`/`mean`/`std`, even when the dtype is unchanged — goes through `double`; `int64` saturation then clamps to `INT64_MIN`/`INT64_MAX` instead of wrapping.
+- The payload is copied into the tensor's own buffer, so the caller can release the PHP string immediately and `clone()` / async runs / `OrtValue` borrowing all keep their existing guarantees.
+- This is tensor plumbing, not an image pipeline: there is no decoder, no resize and no letterbox. `layout` and `scale` only describe bytes the caller already has.
+- `string` and `float16` are rejected: the first has variable-length elements, the second is not implemented by this build.
+
+### Tensor::fromStream
+
+`fromStream` is `fromBuffer` with a stream as the byte source, so it accepts every `fromBuffer` option plus two of its own:
+
+| Option | Meaning |
+| --- | --- |
+| `offset` | Bytes to skip from the current position before reading (seek first, chunked reads as a fallback for non-seekable streams) |
+| `length` | Asserts the payload size up front; `0` (default) means "whatever the shape needs". A different value is an error rather than a silent slice |
+
+```php
+$fp = fopen('/tmp/features.bin', 'rb');
+fseek($fp, 4096);                       // or use the offset option
+$t = OnnxRuntime\Tensor::fromStream($fp, [1, 3, 544, 960], 'uint8', [
+    'layout' => 'hwc',
+    'cast' => 'float32',
+    'scale' => 1 / 255, 'mean' => 0.5, 'std' => 0.5,
+]);
+$t2 = OnnxRuntime\Tensor::fromStream($fp, [64, 768]);  // continues where $t ended
+```
+
+Behaviour worth knowing:
+
+- Reads start at the stream's current position and leave it right after the payload, so several tensors can be pulled from one stream in sequence.
+- Reads are exact: a short stream raises `ConversionException` naming how many bytes arrived instead of silently handing back a partial tensor.
+- `offset` beyond the end of a seekable stream surfaces as the same short-read error.
+- The bytes make two copies on this path (staging buffer -> tensor payload), plus whatever buffering the PHP stream wrapper itself does. For a 1.5 MB payload that is ~0.5 ms; `fromBuffer` avoids the staging copy if you already hold the string.
+- `php://temp`, `php://memory`, compressed filters and remote wrappers all work because only `php_stream_read` / `php_stream_seek` are used. Depth is bounded by the stream's own buffering, not by the tensor size.
+
+### Tensor::toBuffer
+
+The output side of the same idea. On a 522K-element `float32` detection output, `toArray()` costs 6.7 ms and peaks at 16.6 MB of PHP arrays; `toBuffer()` costs 0.33-0.56 ms and returns 2 MB of bytes.
+
+```php
+$raw = $tensor->toBuffer();                              // native bytes, own dtype
+$u8  = $tensor->toBuffer(['cast' => 'uint8']);           // saturating cast
+$hwc = $tensor->toBuffer(['layout' => 'hwc']);           // CHW tensor -> HWC bytes
+```
+
+- Options are `cast` and `layout` only. There is deliberately **no** `scale` / `mean` / `std`: "undo the normalisation" is a claim about what the numbers mean, and that belongs to the caller, not to a byte serialiser. Do it in your own code if you need to round-trip.
+- The bytes are native endian, matching what `fromBuffer` / `fromStream` expect, so a round trip is byte-exact for every numeric and `bool` dtype — but pass the dtype back explicitly, because `fromBuffer()` defaults to `float32`: `fromBuffer($t->toBuffer(), $shape, $t->dtype())`. Without it an `int64` tensor fails with `buffer length 24 does not match shape/dtype (expected 12 bytes for 3 x 4 bytes)`; only `float32` happens to work. A `layout` re-order without a `cast` is a byte copy as well, so `int64` values are not rounded through `double`.
+- String tensors are rejected: their elements are variable length and have no byte layout.
+- Out-of-range casts saturate (`int64` 70000 -> `int16` 32767), matching the input side.
 
 ### OrtValue
 
@@ -573,13 +670,19 @@ Use `runAsync()` / `runWithBindingAsync()` only when the PHP process can wait fo
 
 ### SessionOptions
 
+Two paths, and the choice depends on the provider: use `appendEpDevice()` for a
+Plugin EP (OpenVINO, CUDA Plugin EP), where you pick a specific device from
+`Runtime::getEpDevices()`, and `appendExecutionProvider()` for the built-in
+providers (`CoreML`, `CUDA`, `TensorRT`). `appendExecutionProvider()` also accepts
+a device name on ORT 1.23+ and then routes through the V2 device API.
+
 | Method | Description |
 | --- | --- |
 | `setIntraOpNumThreads(int $threads)` | Set the intra-op thread count; `0` keeps the ORT default; negative values or values above the int limit are rejected |
 | `setInterOpNumThreads(int $threads)` | Set the inter-op thread count; `0` keeps the ORT default |
 | `setGraphOptimizationLevel(string $level)` | `disabled` / `basic` / `extended` / `all`, case-insensitive; default `all` |
 | `setExecutionMode(string $mode)` | `sequential` / `parallel`; default `sequential` |
-| `setLogSeverityLevel(int|string $level)` | `0..4` or `verbose` / `info` / `warning` / `error` / `fatal`; default `2` / `warning` |
+| `setLogSeverityLevel(int \| string $level)` | `0..4` or `verbose` / `info` / `warning` / `error` / `fatal`; default `2` / `warning` |
 | `setEnableCpuMemArena(bool $enable)` | Default `true` |
 | `setEnableMemPattern(bool $enable)` | Default `true` |
 | `appendExecutionProvider(string $name, array $options = [])` | Built-in EP path: append a provider such as `CoreML`, `CUDA` or `TensorRT`; on ORT 1.23+, a name that matches an `Runtime::getEpDevices()` entry (case-insensitive, `ExecutionProvider`/`EP` suffix optional) is routed through the V2 device API instead; options are string -> string |
@@ -606,7 +709,7 @@ Use `runAsync()` / `runWithBindingAsync()` only when the PHP process can wait fo
 
 Plugin libraries are tracked by a process-level registry and live until module `MSHUTDOWN`; they are not unloaded when a PHP `Runtime` object is destroyed. The registry records each registration's generation, device keys, and active lease count under a mutex. `EpDevice` snapshots carry the registration generation, so an old snapshot cannot bind to a newly registered library with the same name; duplicate devices from one plugin are separated by an instance ordinal inside the current Env, and the registration name is part of the device key so two plugins with the same EP name do not collide. The native owner is `SessionState`, which holds the Env reference, plugin lease, and `Ort::Session` in destruction-safe order. A Session reserves the lease before `Ort::Session` creation, releases it immediately if construction fails, and releases it only after the native `Ort::Session` is destroyed; a future Task can retain `shared_ptr<SessionState>` independently of the PHP object. `unregisterExecutionProviderLibrary()` is rejected while any lease remains, and unload happens only at zero. At `MSHUTDOWN`, new Sessions/registrations are disabled first, then only zero-lease registrations are unloaded. The Windows CUDA Plugin EP smoke path has passed (registration, device enumeration, `appendEpDevice()`, inference); general Plugin EP acceptance across providers, platforms, unload sequences and failure modes is still not claimed.
 
-### Type inference rules (when dtype is omitted)
+### Type inference rules (when dtype is omitted, `fromArray` only)
 
 | PHP element type | Inferred dtype |
 | --- | --- |
@@ -619,13 +722,20 @@ Plugin libraries are tracked by a process-level registry and live until module `
 | bool mixed with numeric values | Error; explicit dtype required |
 | string mixed with numeric/bool values | Error; explicit dtype required |
 
-Explicit dtype rules:
+Explicit dtype rules (`fromArray` only):
 
 - Float -> integer: the value must be finite and exactly integral (`1.5` is rejected, never truncated silently), followed by a target-range check.
 - Integer -> target integer: check the target range element by element (for example `[-128, 127]` for `int8`, `[0, 255]` for `uint8`).
 - double -> `float32`: reject a finite input that overflows to `inf` after conversion to `float`; normal precision loss is allowed.
 - Numeric -> `bool`: accept only `0/1` (or `0.0/1.0`); other values are rejected.
 - No implicit conversion between strings and numeric values.
+
+These rules are deliberately strict and apply to `fromArray`, which validates
+every PHP zval. The byte-level APIs (`fromBuffer` / `fromStream` /
+`toBuffer(['cast' => ...])`) use the opposite policy on purpose — out-of-range
+values saturate and float -> integer truncates toward zero — because the input is
+already a typed binary payload rather than an untyped PHP value. Both behaviours
+are documented in their own sections above.
 
 ### Precision policy
 
@@ -675,7 +785,16 @@ Full PHPT suite:
 NO_INTERACTION=1 make test
 ```
 
-macOS: 35/38 passed, 3 platform skips (Windows CUDA `033`, no CUDA/TensorRT `036`, OpenVINO plugin `038`). Windows PHP 8.5.12 ZTS: 34/36 passed, 2 platform skips (CoreML `025`, OpenVINO plugin `038`), including `034`/`035` on both CPU and CUDA. FreeBSD 14.5 PHP 8.5.12 NTS with ORT 1.30.0: 34/38 passed, 4 platform skips (CoreML `025`, Windows CUDA `033`, no CUDA/TensorRT `036`, OpenVINO plugin `038`); the `cpuid_info` line requires the filter documented in `docs/FREEBSD.md`. Linux x86_64 PHP 8.5.12 ZTS (Docker `php:8.5-zts`): 33/36 passed, 3 platform skips (CoreML `025`, Windows CUDA `033`, OpenVINO plugin `038`), including `034`/`035`; `tests/run-async-sanitizers.sh` passed with ASan+LSan and `native-async-stress-ok`. Linux x86_64 PHP 8.5.12 NTS (Docker `php:8.5-cli`): 33/36 passed, the same 3 platform skips, built with `--with-onnxruntime=/opt/ort`. CPU I/O Binding ASan+LSan also passed; Fiber, 8 coroutines, Swoole process, 4 Swoole threads, `pcntl_fork`, and 4 `parallel` runtimes passed. CPU I/O Binding has a native ASan stress gate:
+Per-platform pass/skip counts are in the Support Status table above; that table is
+the authoritative record, the commands here are what produce it. FreeBSD needs the
+`cpuid_info` stderr filter from `docs/FREEBSD.md`, and Linux arm64 the filter from
+`docs/LINUX-ARM64-BASELINE.md`.
+
+Beyond those counts, the Linux x86_64 containers also passed
+`tests/run-async-sanitizers.sh` (ASan+LSan, `native-async-stress-ok`) and the
+Swoole matrix: Fiber, 8 coroutines, Swoole process, 4 Swoole threads,
+`pcntl_fork`, and 4 `parallel` runtimes, with CPU I/O Binding ASan+LSan clean.
+CPU I/O Binding has a native ASan stress gate:
 
 ```bash
 bash tests/run-io-binding-sanitizers.sh
@@ -735,13 +854,25 @@ src/
   io_binding.h/.cpp        # CPU I/O Binding state, input copies, output ownership
   ep_device.h/.cpp         # EpDevice identity snapshot and Env resolution
   runtime.h/.cpp           # Plugin EP registry, device ownership, and session leases
+docs/
+  EP-CPU.md                # Built-in CPU provider: install, threads, caveats
+  EP-COREML.md             # Built-in CoreML provider on macOS arm64
+  EP-OPENVINO.md           # OpenVINO Plugin EP: install, devices, load_config threads
+  EP-CUDA.md               # Built-in CUDA/TensorRT and CUDA Plugin EP
+  EXAMPLE-OPENVINO-YOLO-OCR.md # YOLO11 + PP-OCR end to end, CPU EP vs OpenVINO
+  FREEBSD.md               # FreeBSD baseline and build notes
+  LINUX-ARM64-BASELINE.md  # Linux arm64 baseline and PHPT stderr filter
 tests/
   build-smoke.sh           # Compile + load + Tensor + inference + PHPT
   run-sanitizers.sh        # Native Tensor ASan/LSan/Valgrind
   run-async-sanitizers.sh  # Native AsyncEngine ASan
   run-io-binding-sanitizers.sh # Native I/O Binding ASan/LSan
-  *.phpt                   # 37 PHPT tests
+  *.phpt                   # 44 PHPT tests
   fixtures/                # Local ONNX models
+examples/
+  openvino-yolo-ocr/
+    pipeline.php           # GD -> YOLO11 -> PP-OCR det/rec, per-stage timings
+    quantize.py            # static QDQ int8 for the three models
 benchmarks/
   fastembed_int8_bpe.py    # FastEmbed vs raw ORT vs PHP ORT/tokenize+ORT
   php_ort_bench.php        # PHP-side timing with pre-tokenized inputs

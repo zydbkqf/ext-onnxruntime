@@ -26,7 +26,7 @@ echo 'clone-intra=', $clone->toArray()['intraOpNumThreads'], "\n";
 echo 'original-intra=', $o->toArray()['intraOpNumThreads'], "\n";
 
 $ep = new OnnxRuntime\SessionOptions();
-$ep->appendExecutionProvider('CoreML', ['MLProgram' => '1']);
+$ep->appendExecutionProvider('CoreML', ['ModelFormat' => 'MLProgram']);
 echo 'ep=', json_encode($ep->toArray()['executionProviders']), "\n";
 try {
     $ep->appendExecutionProvider('');
@@ -75,7 +75,7 @@ echo 'final=', $reflection->isFinal() ? 'yes' : 'no', "\n";
 {"intraOpNumThreads":4,"interOpNumThreads":2,"graphOptimizationLevel":"all","executionMode":"parallel","logSeverityLevel":3,"logSeverityName":"error","enableCpuMemArena":false,"enableMemPattern":false,"executionProviders":[],"epDevices":[]}
 clone-intra=1
 original-intra=4
-ep=[{"name":"CoreML","options":{"MLProgram":"1"}}]
+ep=[{"name":"CoreML","options":{"ModelFormat":"MLProgram"}}]
 empty-ep:ConversionException
 thread-negative:OnnxRuntime\ConversionException
 thread-too-large:OnnxRuntime\ConversionException

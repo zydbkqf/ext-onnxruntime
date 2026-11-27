@@ -1,0 +1,51 @@
+{
+  "model": "Qdrant/bge-small-en-v1.5-onnx-Q (model.onnx, int8)",
+  "provider": "openvino",
+  "php_version": "8.5.12",
+  "extension_version": "0.4.13",
+  "onnxruntime_version": "1.32.0",
+  "iterations": 20,
+  "warmup": 3,
+  "threads": 1,
+  "batch_size": 8,
+  "sequence_length": 64,
+  "input_shapes": {
+    "input_ids": [
+      8,
+      64
+    ],
+    "attention_mask": [
+      8,
+      64
+    ],
+    "token_type_ids": [
+      8,
+      64
+    ]
+  },
+  "cpu": {
+    "mean_ms": 213.05806289999995,
+    "p50_ms": 213.192449,
+    "p95_ms": 214.535605,
+    "min_ms": 210.319277,
+    "max_ms": 214.643445
+  },
+  "openvino": {
+    "mean_ms": 101.39508864999998,
+    "p50_ms": 101.168494,
+    "p95_ms": 102.5207,
+    "min_ms": 100.247188,
+    "max_ms": 103.044348
+  },
+  "host": {
+    "cpu": "Intel Xeon Platinum (KVM VM, 2 physical cores / 4 logical)",
+    "ram_gib": 7.1,
+    "os": "Linux x86_64",
+    "php": "8.5.12 NTS (php:8.5-cli image)",
+    "openvino_plugin": "Intel.ML.OnnxRuntime.EP.OpenVINO 1.8.1 (linux-x64)"
+  },
+  "cpu_profile": {
+    "measured_by": "benchmarks/php_ep_cpu_profile.php wrapped in /usr/bin/time -f \"cpu%=%P\"",
+    "note": "process CPU total from this file is a mixture of the CPU and OpenVINO columns; see benchmarks/README.md for the isolated figures"
+  }
+}

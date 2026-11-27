@@ -87,6 +87,65 @@ struct Tensor {
     void validate() const;
 };
 
+/**
+ * Options for building a tensor out of a raw byte buffer.
+ *
+ * These are deliberately *tensor plumbing* knobs, not a preprocessing
+ * pipeline: the buffer is already decoded pixels or features supplied by the
+ * caller, and every operation here is a deterministic, order-defined pass over
+ * the payload.  Nothing in this struct knows what a channel or a pixel means
+ * beyond the target shape the caller declared.
+ *
+ *   - `hwc`: the buffer is stored as [N,]H,W,C while `shape` describes the
+ *     target [N,]C,H,W layout, so elements are re-ordered.
+ *   - `source_type` / `target_type`: element interpretation and optional cast.
+ *   - `scale`, `mean`, `std`: applied as (x * scale - mean[c]) / std[c] while
+ *     the element is still in its widened form.
+ */
+struct BufferOptions {
+    bool hwc = false;
+    ONNXTensorElementDataType source_type =
+        ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
+    ONNXTensorElementDataType target_type =
+        ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
+    double scale = 1.0;
+    std::vector<double> mean;
+    std::vector<double> std;
+};
+
+/**
+ * Builds an owning tensor from `buffer_size` raw bytes laid out as
+ * `shape` (row-major, native endian) with `options`.
+ *
+ * The payload is copied into the tensor's own storage: the caller keeps
+ * ownership of `buffer` and may release it immediately.  This keeps the
+ * "a Tensor always owns its payload" invariant, which is what makes
+ * `clone()`, async runs and OrtValue borrowing safe.
+ *
+ * Throws ConversionError on any mismatch (length, rank 3/4 for `hwc`,
+ * unsupported dtype, non-float target with numeric normalisation, etc.).
+ */
+Tensor tensorFromBuffer(const void *buffer, size_t buffer_size,
+                        const std::vector<int64_t> &shape,
+                        const BufferOptions &options);
+
+/**
+ * Serialises a numeric tensor back to raw bytes.
+ *
+ * This is the inverse of tensorFromBuffer(): it only performs dtype casts and
+ * layout re-ordering, never the numeric normalisation, because "undo mean/std"
+ * is a semantic claim about what the numbers mean and the buffer layer does
+ * not make those.
+ *
+ *   - `target_type` selects the element type written (`tensor.type` for none).
+ *   - `hwc` writes [N,]H,W,C bytes from a [N,]C,H,W tensor (rank 3/4 only).
+ *
+ * Throws ConversionError for string tensors, unsupported dtypes, or a
+ * re-ordering the rank cannot express.
+ */
+std::string tensorToBuffer(const Tensor &tensor,
+                           ONNXTensorElementDataType target_type, bool hwc);
+
 /** Byte width of one element of `type`; throws for STRING/UNDEFINED. */
 size_t elementByteSize(ONNXTensorElementDataType type);
 

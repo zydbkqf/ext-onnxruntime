@@ -110,7 +110,7 @@ array(3) {
     int(3)
   }
 }
-Error: OnnxRuntime\Tensor cannot be constructed directly; use OnnxRuntime\Tensor::fromArray()
+Error: OnnxRuntime\Tensor cannot be constructed directly; use OnnxRuntime\Tensor::fromArray() or OnnxRuntime\Tensor::fromBuffer()
 ArgumentCountError
 TypeError
 Error

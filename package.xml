@@ -14,9 +14,9 @@
   <email>denischeung@users.noreply.github.com</email>
   <active>yes</active>
  </lead>
- <date>2026-11-24</date>
+ <date>2026-11-27</date>
  <version>
-  <release>0.4.13</release>
+  <release>0.4.14</release>
   <api>0.4.0</api>
  </version>
  <stability>
@@ -24,7 +24,7 @@
   <api>beta</api>
  </stability>
  <license uri="https://opensource.org/licenses/MIT">MIT</license>
- <notes>0.4.13 closes a Plugin EP lease gap: a device resolved by provider name through appendExecutionProvider() now carries its registration name and generation, so unregisterExecutionProviderLibrary() is refused while the Session is alive. The release also adds OpenVINO Plugin EP benchmarks, FreeBSD CI, and a PHP 8.6-only CI matrix. Sources ONNX Runtime from NuGet by default: omitting --with-onnxruntime downloads the Microsoft.ML.OnnxRuntime CPU package, --with-cuda12/--with-cuda13 select the Linux GPU packages, and --with-coreml asserts CoreML on macOS arm64. The core build compiles against ONNX Runtime 1.18+ and gates EP-device, DeviceTensor, Plugin EP and CoreML behind ORT 1.23. The NuGet cache lives outside the source tree so make clean cannot delete the SDK. Synchronous/asynchronous inference, IoBinding, batch and Plugin EP features are preserved.</notes>
+ <notes>0.4.14 fixes three byte-path bugs and documents the whole surface. Byte-level Tensor round trips are exact: fromBuffer/toBuffer copy bytes verbatim when the dtype is unchanged and no scale/mean/std is requested, so int64 values above 2^53, INT64_MIN and INT64_MAX survive a round trip instead of being routed through double. Clamping to the int64 upper bound is no longer undefined behaviour (2^63 is not representable as a double; NaN now clamps to INT64_MIN and values at or above 2^63 saturate to INT64_MAX). mean/std now follow the channel axis of the target shape instead of a fixed offset from the end: dim 0 for rank 3, dim 1 for rank >= 4 with the stride taken after C, which also fixes per-channel normalisation for 5D NCDHW. fromBuffer and toBuffer share one option parser. Adds six PHPT cases (039-044) covering the byte API, int64 exactness, rank-3 and rank-5 channel axes, and fixes the two user-reported bugs above. Documentation: EP-CPU, EP-COREML, EP-OPENVINO, EP-CUDA, and an end-to-end YOLO11 + PP-OCR example (examples/openvino-yolo-ocr) with a static-QDQ int8 quantizer and CPU-vs-OpenVINO measurements. package.xml now ships docs, examples and all 44 tests; CI verifies that package.xml and the tree agree. Everything else is preserved.</notes>
  <contents>
   <dir name="/">
    <file name="config.m4" role="src"/>
@@ -38,10 +38,28 @@
    <file name="benchmarks/php_ort_bench.php" role="test"/>
    <file name="benchmarks/php_tokenize_ort_bench.php" role="test"/>
    <file name="benchmarks/php_wordpiece.php" role="test"/>
+   <file name="benchmarks/php_ep_bench.php" role="test"/>
+   <file name="benchmarks/php_ep_cpu_profile.php" role="test"/>
+   <file name="benchmarks/ppocr/bench.php" role="test"/>
+   <file name="benchmarks/ppocr/fused.c" role="test"/>
+   <file name="benchmarks/ppocr/gen.py" role="test"/>
    <file name="benchmarks/results/windows-zts-cpu.json" role="doc"/>
    <file name="benchmarks/results/windows-zts-cuda.json" role="doc"/>
    <file name="benchmarks/results/windows-zts-tensorrt.json" role="doc"/>
+   <file name="benchmarks/results/windows-zts-openvino-ep.json" role="doc"/>
+   <file name="benchmarks/results/linux-nts-openvino-ep-t1.json" role="doc"/>
+   <file name="benchmarks/results/linux-nts-openvino-ep-t4.json" role="doc"/>
+   <file name="docs/EP-CPU.md" role="doc"/>
+   <file name="docs/EP-COREML.md" role="doc"/>
+   <file name="docs/EP-CUDA.md" role="doc"/>
+   <file name="docs/EP-OPENVINO.md" role="doc"/>
+   <file name="docs/EXAMPLE-OPENVINO-YOLO-OCR.md" role="doc"/>
+   <file name="docs/FREEBSD.md" role="doc"/>
+   <file name="docs/LINUX-ARM64-BASELINE.md" role="doc"/>
+   <file name="examples/openvino-yolo-ocr/pipeline.php" role="doc"/>
+   <file name="examples/openvino-yolo-ocr/quantize.py" role="doc"/>
    <file name="src/device_tensor.cpp" role="src"/>
+
    <file name="src/ep_device.cpp" role="src"/>
    <file name="src/async_engine.h" role="src"/>
    <file name="src/async_engine.cpp" role="src"/>
@@ -104,7 +122,14 @@
    <file name="tests/036-appender-routing.phpt" role="test"/>
    <file name="tests/037-provider-device-fallback.phpt" role="test"/>
    <file name="tests/038-plugin-lease.phpt" role="test"/>
+   <file name="tests/039-tensor-from-buffer.phpt" role="test"/>
+   <file name="tests/040-tensor-from-stream.phpt" role="test"/>
+   <file name="tests/041-tensor-to-buffer.phpt" role="test"/>
+   <file name="tests/042-buffer-int64-exactness.phpt" role="test"/>
+   <file name="tests/043-buffer-channel-axis.phpt" role="test"/>
+   <file name="tests/044-buffer-rank5-channel-axis.phpt" role="test"/>
    <file name="tests/build-smoke.sh" role="test"/>
+   <file name="tests/check-package-contents.sh" role="test"/>
    <file name="tests/native_stress.cpp" role="test"/>
    <file name="tests/native_async_stress.cpp" role="test"/>
    <file name="tests/native_io_binding_stress.cpp" role="test"/>
@@ -112,6 +137,14 @@
    <file name="tests/run-async-sanitizers.sh" role="test"/>
    <file name="tests/run-sanitizers.sh" role="test"/>
    <file name="tests/validator_probe.cpp" role="test"/>
+   <file name="tests/stress/asan-stress.php" role="test"/>
+   <file name="tests/async-swoole/common.php" role="test"/>
+   <file name="tests/async-swoole/coroutine.php" role="test"/>
+   <file name="tests/async-swoole/fiber.php" role="test"/>
+   <file name="tests/async-swoole/process.php" role="test"/>
+   <file name="tests/async-swoole/thread.php" role="test"/>
+   <file name="tests/async-swoole/thread-worker.php" role="test"/>
+   <file name="tests/async-swoole/run.sh" role="test"/>
    <file name="tests/fixtures/README.md" role="test"/>
    <file name="tests/fixtures/corrupt.onnx" role="test"/>
    <file name="tests/fixtures/dynamic.onnx" role="test"/>

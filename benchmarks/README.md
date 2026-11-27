@@ -123,6 +123,72 @@ The OpenVINO plugin registered `OpenVINOExecutionProvider` and an
 is used underneath OpenVINO's CPU plugin. An explicit DNNL EP requires building
 ONNX Runtime from source with `--use_dnnl`.
 
+### Linux
+
+Same model and workload, PHP 8.5.12 NTS, extension 0.4.13, ORT 1.32.0,
+OpenVINO plugin `Intel.ML.OnnxRuntime.EP.OpenVINO` 1.8.1 (`linux-x64`),
+BGE-small int8, batch 8 x 64. Host: KVM VM on an Intel Xeon Platinum with
+**2 physical cores / 4 logical CPUs** (SMT), 7.1 GiB RAM. This is not
+comparable to the Windows numbers above: different CPU, different core count.
+
+`php_ep_bench.php`, CPU column then OpenVINO column in the same process, 20
+measured runs:
+
+| Provider | `--threads` | Mean | p50 | p95 |
+| --- | ---: | ---: | ---: | ---: |
+| CPU | 1 | 213.1 ms | 213.2 ms | 214.5 ms |
+| CPU | 4 | 106.8 ms | 106.8 ms | 107.7 ms |
+| OpenVINO | 1 | 101.4 ms | 101.2 ms | 102.5 ms |
+| OpenVINO | 4 | 100.7 ms | 100.6 ms | 101.8 ms |
+
+CPU usage, measured on isolated single-provider runs
+(`benchmarks/php_ep_cpu_profile.php` wrapped in `/usr/bin/time -f "cpu%=%P"`), 20
+measured runs:
+
+| Provider | intra-op threads | p50 | Process CPU |
+| --- | ---: | ---: | ---: |
+| CPU | 1 | 214.2 ms | 99% |
+| CPU | 4 | 106.5 ms | 354% |
+| OpenVINO | 1 | 101.2 ms | 173% |
+| OpenVINO | 4 | 100.7 ms | 176% |
+
+OpenVINO thread bounds, same isolated harness. `--threads` is ignored by the
+plugin, and so is its `num_of_threads` provider option (it logs
+`Provider option num_of_threads is ignored. Please set it via the load_config as:
+"INFERENCE_NUM_THREADS": "1"`). The working knob is the device-keyed
+`load_config` JSON:
+
+| OpenVINO setting | p50 | Process CPU |
+| --- | ---: | ---: |
+| `{"CPU":{"INFERENCE_NUM_THREADS":"1"}}` | 197.5 ms | 101% |
+| `{"CPU":{"INFERENCE_NUM_THREADS":"2"}}` | 101.6 ms | 175% |
+| default, no `load_config` | 100.4 ms | 176% |
+| `--threads=4`, no `load_config` | 100.7 ms | 176% |
+
+What these tables mean:
+
+- `--threads` only sets ORT's intra-op thread count. The OpenVINO CPU plugin
+  runs its own TBB pool, so the option does not bound it: wall time stays at
+  ~101 ms whether it is 1 or 4, while the process keeps consuming ~1.7 cores.
+  `OMP_NUM_THREADS=1` does not change that either — the plugin is TBB-based, not
+  OpenMP-based. Bounding it *is* possible, just not through that option:
+  `load_config` with `INFERENCE_NUM_THREADS=1` pins it to one core (197.5 ms /
+  101%), which proves the earlier "cannot be pinned" reading was a knob problem,
+  not a plugin limitation.
+- The Windows 3.41x figure above is therefore a wall-clock ratio at unequal CPU
+  budgets: OpenVINO runs at its default width while CPU EP is pinned to one
+  thread on a 6-core i5. That run did not record CPU usage, so it cannot be read
+  as per-core efficiency.
+- OpenVINO's default footprint here is ~2 threads (~1.7 cores), i.e. the
+  physical core count of this host, not the 4 logical CPUs. The honest
+  same-budget comparison is therefore OpenVINO default (100.4 ms / 176%) against
+  CPU EP at 2 intra-op threads (110.0 ms / 187%): ~8% faster for slightly less
+  CPU. Against CPU EP at 4 threads it is ~5% faster while using half the CPU,
+  because the extra two CPU threads are hyperthreads on this host.
+
+The same caveat applies to the DNNL notes above: a provider that manages its own
+thread pool will look fast whenever the baseline is thread-limited.
+
 ## Results
 
 macOS arm64, PHP 8.5.12 NTS (Homebrew), extension ORT 1.28.2, Python ORT
@@ -171,12 +237,15 @@ study.
 ## Result JSON
 
 Committed samples from the Windows run above (100 iterations each, PHP 8.5.12
-ZTS extension 0.4.0, Python ORT 1.32.0):
+ZTS extension 0.4.0, Python ORT 1.32.0), plus the Linux ep-bench runs (20
+iterations, PHP 8.5.12 NTS extension 0.4.13):
 
 - `benchmarks/results/windows-zts-cpu.json`
 - `benchmarks/results/windows-zts-cuda.json`
 - `benchmarks/results/windows-zts-tensorrt.json`
 - `benchmarks/results/windows-zts-openvino-ep.json`
+- `benchmarks/results/linux-nts-openvino-ep-t1.json`
+- `benchmarks/results/linux-nts-openvino-ep-t4.json`
 
 Each file records `platform`, `machine`, `provider`, `model_file`, and the
 five percentile sets (mean/p50/p95/min/max) for every column, so a table row

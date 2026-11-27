@@ -42,6 +42,9 @@ jobs:
           sudo apt-get update
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends clang
 
+      - name: Verify package.xml covers the tree
+        run: bash tests/check-package-contents.sh
+
       - name: Build and load smoke
         run: bash tests/build-smoke.sh
 
